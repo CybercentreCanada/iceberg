@@ -1202,7 +1202,7 @@ public class TestBloomRowGroupFilter {
     // should be eliminated by bloom filter
     Expression metric = greaterThan("id", INT_MAX_VALUE);
     Expression expr = or(bloom, or(dict, metric));
-    
+
     // bloom OR (dict OR metric) -> bloom OR dict
     Expression expected = Binder.bind(SCHEMA.asStruct(), Expressions.or(bloom, dict), true);
     ParquetMetricsRowGroupFilter metricFilter = new ParquetMetricsRowGroupFilter(SCHEMA, expr);
