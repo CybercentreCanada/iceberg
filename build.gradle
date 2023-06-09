@@ -132,7 +132,7 @@ def projectVersion = getProjectVersion()
 final REVAPI_PROJECTS = ["iceberg-api", "iceberg-core", "iceberg-parquet", "iceberg-orc", "iceberg-common", "iceberg-data"]
 
 allprojects {
-  group = "org.apache.iceberg"
+  group = "cccs.hogwarts.spark"
   version = projectVersion
   repositories {
     mavenCentral()
