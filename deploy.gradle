@@ -81,7 +81,7 @@ subprojects {
             }
           }
 
-          groupId = 'org.apache.iceberg'
+          groupId = 'org.cccs.iceberg'
           pom {
             name = 'Apache Iceberg'
             description = 'A table format for huge analytic datasets'
