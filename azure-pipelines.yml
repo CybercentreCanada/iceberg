@@ -6,12 +6,21 @@
 trigger:
 - develop
 
+pr:
+  branches:
+    include:
+      - develop
+
 pool:
   vmImage: ubuntu-latest
 
+variables:
+  isDevelop: $[eq(variables['Build.SourceBranch'], 'refs/heads/develop')]
+
 steps:
 - task: Gradle@2
-  displayName: 'Build iceberg'
+  displayName: 'Build & Publish org.cccs.iceberg'
+  condition: eq(variables.isDevelop, true)
   inputs:
     workingDirectory: ''
     gradleWrapperFile: 'gradlew'
@@ -22,3 +31,16 @@ steps:
     publishJUnitResults: true
     testResultsFiles: '**/TEST-*.xml'
     tasks: 'build -x test -x integrationTest publish -PmavenUser=$(MAVENUSER) -PmavenPassword=$(MAVENPWD)'
+- task: Gradle@2
+  displayName: 'Build org.cccs.iceberg'
+  condition: eq(variables.isDevelop, false)
+  inputs:
+    workingDirectory: ''
+    gradleWrapperFile: 'gradlew'
+    gradleOptions: '-Xmx3072m'
+    javaHomeOption: 'JDKVersion'
+    jdkVersionOption: '1.8'
+    jdkArchitectureOption: 'x64'
+    publishJUnitResults: true
+    testResultsFiles: '**/TEST-*.xml'
+    tasks: 'build -x test -x integrationTest'    
