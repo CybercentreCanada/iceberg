@@ -19,7 +19,7 @@ variables:
 
 steps:
 - task: Gradle@2
-  displayName: 'Build & PUblish org.cccs.iceberg'
+  displayName: 'Build & Publish org.cccs.iceberg'
   condition: eq(variables.isDevelop, true)
   inputs:
     workingDirectory: ''
@@ -32,7 +32,7 @@ steps:
     testResultsFiles: '**/TEST-*.xml'
     tasks: 'build -x test -x integrationTest publish -PmavenUser=$(MAVENUSER) -PmavenPassword=$(MAVENPWD)'
 - task: Gradle@2
-  displayName: 'Build & PUblish org.cccs.iceberg'
+  displayName: 'Build org.cccs.iceberg'
   condition: eq(variables.isDevelop, false)
   inputs:
     workingDirectory: ''
