@@ -35,7 +35,8 @@ public class JdbcClientPool extends ClientPoolImpl<Connection, SQLException> {
   private final Map<String, String> properties;
 
   private static final Set<String> RETRYABLE_CONNECTION_SQL_STATES =
-      ImmutableSet.of("08000", "08003", "08006", "08004", "08007");
+      // CCCS modification: added state 57000 for PostgresQL connection timeout.
+      ImmutableSet.of("08000", "08003", "08006", "08004", "08007", "57000");
 
   public JdbcClientPool(String dbUrl, Map<String, String> props) {
     this(
