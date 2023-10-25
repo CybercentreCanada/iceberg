@@ -109,11 +109,11 @@ subprojects {
       }
 
       repositories {
-        maven {
-          credentials {
-            username "$usr"
-            password "$pwd"
-          }
+        // maven {
+        //   credentials {
+        //     username project.hasProperty('mavenUser') ? "$mavenUser" : ""
+        //     password project.hasProperty('mavenPassword') ? "$mavenPassword" : ""
+        //   }
           // upload to the releases repository using ./gradlew -Prelease publish
           // def apacheSnapshotsRepoUrl = 'https://repository.apache.org/content/repositories/snapshots'
           // def apacheReleasesRepoUrl = 'https://repository.apache.org/service/local/staging/deploy/maven2'
@@ -121,6 +121,10 @@ subprojects {
           // def releasesRepoUrl = project.hasProperty('mavenReleasesRepo') ? "$mavenReleasesRepo" : "$apacheReleasesRepoUrl"
           // url = project.hasProperty('release') ? releasesRepoUrl : snapshotsRepoUrl
           url = 'https://pkgs.dev.azure.com/cccs-stratus/_packaging/cccs-stratus/maven/v1'
+          name = 'cccs-stratus'
+          authentication {
+            basic(BasicAuthentication)
+          }
         }
       }
     }
