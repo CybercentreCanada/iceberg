@@ -128,7 +128,6 @@ subprojects {
             }            
           }
           // url = 'https://pkgs.dev.azure.com/cccs-stratus/_packaging/cccs-stratus/maven/v1'
-        }
       }
     }
 
