@@ -23,6 +23,9 @@ variables:
   isPublish: $[eq(variables['Build.SourceBranch'], 'refs/heads/iceberg-1.3.0')]
 
 steps:
+  - script: |
+    echo 'testing gradle build'
+
   - task: Gradle@2
     displayName: 'Build org.cccs.iceberg'
     inputs:
@@ -57,4 +60,5 @@ steps:
       jdkArchitectureOption: 'x64'
       publishJUnitResults: true
       testResultsFiles: '**/TEST-*.xml'
-      tasks: 'publish -Pversion=1.3.0-SNAPSHOT -PmavenUser=$(MAVENUSER) -PmavenPassword=$(MAVENPWD) '
+      # tasks: 'publish -Pversion=1.3.0-SNAPSHOT -PmavenUser=$(MAVENUSER) -PmavenPassword=$(MAVENPWD) '
+      tasks: 'publish -Pversion=1.3.0-SNAPSHOT'
