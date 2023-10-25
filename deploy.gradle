@@ -120,11 +120,14 @@ subprojects {
           // def snapshotsRepoUrl = project.hasProperty('mavenSnapshotsRepo') ? "$mavenSnapshotsRepo" : "$apacheSnapshotsRepoUrl"
           // def releasesRepoUrl = project.hasProperty('mavenReleasesRepo') ? "$mavenReleasesRepo" : "$apacheReleasesRepoUrl"
           // url = project.hasProperty('release') ? releasesRepoUrl : snapshotsRepoUrl
-          url = 'https://pkgs.dev.azure.com/cccs-stratus/_packaging/cccs-stratus/maven/v1'
-          name = 'cccs-stratus'
-          authentication {
-            basic(BasicAuthentication)
+          maven {
+            url 'https://pkgs.dev.azure.com/cccs-stratus/_packaging/cccs-stratus/maven/v1'
+            name 'cccs-stratus'
+            authentication {
+              basic(BasicAuthentication)
+            }            
           }
+          // url = 'https://pkgs.dev.azure.com/cccs-stratus/_packaging/cccs-stratus/maven/v1'
         }
       }
     }
