@@ -310,17 +310,16 @@ public class SparkMicroBatchStream implements MicroBatchStream, SupportsAdmissio
   }
 
   private Snapshot nextSnapshotSkippingOverNoneProcessable(Snapshot curSnapshot) {
-    Snapshot next = SnapshotUtil.snapshotAfter(table, curSnapshot.snapshotId());
-    while (!shouldProcess(next)) {
-      LOG.debug("Skipping snapshot: {} of table {}", next.snapshotId(), table.name());
-      // if the last snapshot is a snapshot we should skip then return null
-      // indicating there is no next snapshot to consider
-      if (next.snapshotId() == table.currentSnapshot().snapshotId()) {
+    curSnapshot = SnapshotUtil.snapshotAfter(table, curSnapshot.snapshotId());
+    while (!shouldProcess(curSnapshot)) {
+      LOG.debug("Skipping snapshot: {} of table {}", curSnapshot.snapshotId(), table.name());
+      // if the currentSnapShot was also the mostRecentSnapshot then break
+      if (curSnapshot.snapshotId() == table.currentSnapshot().snapshotId()) {
         return null;
       }
-      next = SnapshotUtil.snapshotAfter(table, next.snapshotId());
+      curSnapshot = SnapshotUtil.snapshotAfter(table, curSnapshot.snapshotId());
     }
-    return next;
+    return curSnapshot;
   }
 
   @Override
