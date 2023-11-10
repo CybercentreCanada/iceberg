@@ -309,20 +309,6 @@ public class SparkMicroBatchStream implements MicroBatchStream, SupportsAdmissio
     }
   }
 
-  private Snapshot nextSnapshotSkippingOverNoneProcessable(Snapshot curSnapshot) {
-    Snapshot next = SnapshotUtil.snapshotAfter(table, curSnapshot.snapshotId());
-    while (!shouldProcess(next)) {
-      LOG.debug("Skipping snapshot: {} of table {}", next.snapshotId(), table.name());
-      // if the last snapshot is a snapshot we should skip then return null
-      // indicating there is no next snapshot to consider
-      if (next.snapshotId() == table.currentSnapshot().snapshotId()) {
-        return null;
-      }
-      next = SnapshotUtil.snapshotAfter(table, next.snapshotId());
-    }
-    return next;
-  }
-
   @Override
   @SuppressWarnings("checkstyle:CyclomaticComplexity")
   public Offset latestOffset(Offset startOffset, ReadLimit limit) {
@@ -406,9 +392,9 @@ public class SparkMicroBatchStream implements MicroBatchStream, SupportsAdmissio
 
       // if everything was OK and we consumed complete snapshot then move to next snapshot
       if (shouldContinueReading) {
-        Snapshot nextValid = nextSnapshotSkippingOverNoneProcessable(curSnapshot);
+        Snapshot nextValid = nextValidSnapshot(curSnapshot);
         if (nextValid == null) {
-          // all the remaining snapshots should be skipped.
+          // nextValide is null, this implies all the remaining snapshots should be skipped.
           shouldContinueReading = false;
           break;
         }
@@ -425,6 +411,30 @@ public class SparkMicroBatchStream implements MicroBatchStream, SupportsAdmissio
 
     // if no new data arrived, then return null.
     return latestStreamingOffset.equals(startingOffset) ? null : latestStreamingOffset;
+  }
+
+  /**
+   * Get the next snapshot skiping over rewrite and delete snapshots.
+   *
+   * @param curSnapshot the current snapshot
+   * @return the next valid snapshot (not a rewrite or delete snapshot), returns null if all
+   *     remaining snapshots should be skipped.
+   */
+  private Snapshot nextValidSnapshot(Snapshot curSnapshot) {
+    Preconditions.checkArgument(
+        curSnapshot != null, "Sanity check, curSnapshot should not be null");
+
+    Snapshot nextSnapshot = SnapshotUtil.snapshotAfter(table, curSnapshot.snapshotId());
+    // skip over rewrite and delete snapshots
+    while (!shouldProcess(nextSnapshot)) {
+      LOG.debug("Skipping snapshot: {} of table {}", nextSnapshot.snapshotId(), table.name());
+      // if the currentSnapShot was also the mostRecentSnapshot then break
+      if (nextSnapshot.snapshotId() == table.currentSnapshot().snapshotId()) {
+        return null;
+      }
+      nextSnapshot = SnapshotUtil.snapshotAfter(table, nextSnapshot.snapshotId());
+    }
+    return nextSnapshot;
   }
 
   private long addedFilesCount(Snapshot snapshot) {
