@@ -82,6 +82,7 @@ subprojects {
           }
 
           groupId = 'org.cccs.iceberg'
+          version = "1.4.2-SNAPSHOT"
           pom {
             name = 'Apache Iceberg'
             description = 'A table format for huge analytic datasets'
