@@ -81,7 +81,7 @@ subprojects {
             }
           }
 
-          groupId = 'org.cccs.iceberg'
+          groupId = 'cccs.ap.iceberg'
           version = "1.4.2-SNAPSHOT"
           pom {
             name = 'Apache Iceberg'
