@@ -102,15 +102,7 @@ class ReadConf<T> {
 
     ParquetCombinedRowGroupFilter combinedFilter = null;
     if (filter != null) {
-      ParquetMetricsRowGroupFilter statsFilter =
-          new ParquetMetricsRowGroupFilter(expectedSchema, filter, caseSensitive);
-      ParquetDictionaryRowGroupFilter dictFilter =
-          new ParquetDictionaryRowGroupFilter(expectedSchema, filter, caseSensitive);
-      ParquetBloomRowGroupFilter bloomFilter =
-          new ParquetBloomRowGroupFilter(expectedSchema, filter, caseSensitive);
-      combinedFilter =
-          new ParquetCombinedRowGroupFilter(
-              expectedSchema, filter, caseSensitive, statsFilter, dictFilter, bloomFilter);
+      combinedFilter = new ParquetCombinedRowGroupFilter(expectedSchema, filter, caseSensitive);
     }
 
     long computedTotalValues = 0L;

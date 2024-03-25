@@ -43,17 +43,11 @@ public class ParquetCombinedRowGroupFilter {
   private final ParquetDictionaryRowGroupFilter dictFilter;
   private final ParquetBloomRowGroupFilter bloomFilter;
 
-  public ParquetCombinedRowGroupFilter(
-      Schema schema,
-      Expression unbound,
-      boolean caseSensitive,
-      ParquetMetricsRowGroupFilter statsFilter,
-      ParquetDictionaryRowGroupFilter dictFilter,
-      ParquetBloomRowGroupFilter bloomFilter) {
+  public ParquetCombinedRowGroupFilter(Schema schema, Expression unbound, boolean caseSensitive) {
     this.schema = schema;
-    this.statsFilter = statsFilter;
-    this.dictFilter = dictFilter;
-    this.bloomFilter = bloomFilter;
+    this.statsFilter = new ParquetMetricsRowGroupFilter(schema, unbound, caseSensitive);
+    this.dictFilter = new ParquetDictionaryRowGroupFilter(schema, unbound, caseSensitive);
+    this.bloomFilter = new ParquetBloomRowGroupFilter(schema, unbound, caseSensitive);
     StructType struct = schema.asStruct();
     this.expr = Binder.bind(struct, Expressions.rewriteNot(unbound), caseSensitive);
   }
