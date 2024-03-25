@@ -95,11 +95,6 @@ public class ParquetDictionaryRowGroupFilter {
     private Map<Integer, Function<Object, Object>> conversions = null;
     private boolean initStatus = ROWS_MIGHT_MATCH;
 
-    @Override
-    public boolean getInitStatus() {
-      return initStatus;
-    }
-
     private EvalVisitor(
         MessageType fileSchema,
         BlockMetaData rowGroup,
@@ -107,7 +102,7 @@ public class ParquetDictionaryRowGroupFilter {
       this.initStatus = init(fileSchema, rowGroup, dictionaryReadStore);
     }
 
-    private Boolean init(
+    private boolean init(
         MessageType fileSchema,
         BlockMetaData rowGroup,
         DictionaryPageReadStore dictionaryReadStore) {
@@ -141,6 +136,11 @@ public class ParquetDictionaryRowGroupFilter {
 
     private boolean eval() {
       return ExpressionVisitors.visitEvaluator(expr, this);
+    }
+
+    @Override
+    public boolean getInitStatus() {
+      return initStatus;
     }
 
     @Override

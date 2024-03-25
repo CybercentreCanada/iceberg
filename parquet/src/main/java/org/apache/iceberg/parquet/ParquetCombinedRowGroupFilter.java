@@ -70,37 +70,39 @@ public class ParquetCombinedRowGroupFilter {
       BlockMetaData rowGroup,
       DictionaryPageReadStore dictionaries,
       BloomFilterReader bloomReader) {
-    List<BoundExpressionVisitor<Boolean>> visitors = new ArrayList();
+    List<ParquetRowGroupEvaluator> evaluators = new ArrayList();
 
-    ParquetRowGroupEvaluator visitor = statsFilter.buildVisitor(fileSchema, rowGroup);
-    if (visitor.getInitStatus() == ROWS_CANNOT_MATCH) {
+    ParquetRowGroupEvaluator eval = null;
+
+    eval = statsFilter.buildVisitor(fileSchema, rowGroup);
+    if (eval.getInitStatus() == ROWS_CANNOT_MATCH) {
       return ROWS_CANNOT_MATCH;
     }
-    visitors.add(visitor);
+    evaluators.add(eval);
 
-    ParquetRowGroupEvaluator visitor2 = dictFilter.buildVisitor(fileSchema, rowGroup, dictionaries);
-    if (visitor2.getInitStatus() == ROWS_CANNOT_MATCH) {
+    eval = dictFilter.buildVisitor(fileSchema, rowGroup, dictionaries);
+    if (eval.getInitStatus() == ROWS_CANNOT_MATCH) {
       return ROWS_CANNOT_MATCH;
     }
-    visitors.add(visitor2);
+    evaluators.add(eval);
 
-    ParquetRowGroupEvaluator visitor3 = bloomFilter.buildVisitor(fileSchema, rowGroup, bloomReader);
-    if (visitor3.getInitStatus() == ROWS_CANNOT_MATCH) {
+    eval = bloomFilter.buildVisitor(fileSchema, rowGroup, bloomReader);
+    if (eval.getInitStatus() == ROWS_CANNOT_MATCH) {
       return ROWS_CANNOT_MATCH;
     }
-    visitors.add(visitor3);
+    evaluators.add(eval);
 
-    return new CombinedEvalVisitor(visitors).eval();
+    return new CombinedEvalVisitor(evaluators).eval();
   }
 
   private static final boolean ROWS_MIGHT_MATCH = true;
   private static final boolean ROWS_CANNOT_MATCH = false;
 
   private class CombinedEvalVisitor extends BoundExpressionVisitor<Boolean> {
-    private final List<BoundExpressionVisitor<Boolean>> visitors;
+    private final List<ParquetRowGroupEvaluator> evaluators;
 
-    private CombinedEvalVisitor(List<BoundExpressionVisitor<Boolean>> visitors) {
-      this.visitors = visitors;
+    private CombinedEvalVisitor(List<ParquetRowGroupEvaluator> evaluators) {
+      this.evaluators = evaluators;
     }
 
     private boolean eval() {
@@ -132,74 +134,76 @@ public class ParquetCombinedRowGroupFilter {
       return leftResult || rightResult;
     }
 
+    // Evaluations of BoundReferences is delegated to the metrics, dictionary and bloom evaluators.
+
     @Override
     public <T> Boolean isNull(BoundReference<T> ref) {
-      return visitors.stream().allMatch(v -> v.isNull(ref) == ROWS_MIGHT_MATCH);
+      return evaluators.stream().allMatch(v -> v.isNull(ref) == ROWS_MIGHT_MATCH);
     }
 
     @Override
     public <T> Boolean notNull(BoundReference<T> ref) {
-      return visitors.stream().allMatch(v -> v.notNull(ref) == ROWS_MIGHT_MATCH);
+      return evaluators.stream().allMatch(v -> v.notNull(ref) == ROWS_MIGHT_MATCH);
     }
 
     @Override
     public <T> Boolean isNaN(BoundReference<T> ref) {
-      return visitors.stream().allMatch(v -> v.isNaN(ref) == ROWS_MIGHT_MATCH);
+      return evaluators.stream().allMatch(v -> v.isNaN(ref) == ROWS_MIGHT_MATCH);
     }
 
     @Override
     public <T> Boolean notNaN(BoundReference<T> ref) {
-      return visitors.stream().allMatch(v -> v.notNaN(ref) == ROWS_MIGHT_MATCH);
+      return evaluators.stream().allMatch(v -> v.notNaN(ref) == ROWS_MIGHT_MATCH);
     }
 
     @Override
     public <T> Boolean lt(BoundReference<T> ref, Literal<T> lit) {
-      return visitors.stream().allMatch(v -> v.lt(ref, lit) == ROWS_MIGHT_MATCH);
+      return evaluators.stream().allMatch(v -> v.lt(ref, lit) == ROWS_MIGHT_MATCH);
     }
 
     @Override
     public <T> Boolean ltEq(BoundReference<T> ref, Literal<T> lit) {
-      return visitors.stream().allMatch(v -> v.ltEq(ref, lit) == ROWS_MIGHT_MATCH);
+      return evaluators.stream().allMatch(v -> v.ltEq(ref, lit) == ROWS_MIGHT_MATCH);
     }
 
     @Override
     public <T> Boolean gt(BoundReference<T> ref, Literal<T> lit) {
-      return visitors.stream().allMatch(v -> v.gt(ref, lit) == ROWS_MIGHT_MATCH);
+      return evaluators.stream().allMatch(v -> v.gt(ref, lit) == ROWS_MIGHT_MATCH);
     }
 
     @Override
     public <T> Boolean gtEq(BoundReference<T> ref, Literal<T> lit) {
-      return visitors.stream().allMatch(v -> v.gtEq(ref, lit) == ROWS_MIGHT_MATCH);
+      return evaluators.stream().allMatch(v -> v.gtEq(ref, lit) == ROWS_MIGHT_MATCH);
     }
 
     @Override
     public <T> Boolean eq(BoundReference<T> ref, Literal<T> lit) {
-      return visitors.stream().allMatch(v -> v.eq(ref, lit) == ROWS_MIGHT_MATCH);
+      return evaluators.stream().allMatch(v -> v.eq(ref, lit) == ROWS_MIGHT_MATCH);
     }
 
     @Override
     public <T> Boolean in(BoundReference<T> ref, Set<T> literalSet) {
-      return visitors.stream().allMatch(v -> v.in(ref, literalSet) == ROWS_MIGHT_MATCH);
+      return evaluators.stream().allMatch(v -> v.in(ref, literalSet) == ROWS_MIGHT_MATCH);
     }
 
     @Override
     public <T> Boolean notIn(BoundReference<T> ref, Set<T> literalSet) {
-      return visitors.stream().allMatch(v -> v.notIn(ref, literalSet) == ROWS_MIGHT_MATCH);
+      return evaluators.stream().allMatch(v -> v.notIn(ref, literalSet) == ROWS_MIGHT_MATCH);
     }
 
     @Override
     public <T> Boolean startsWith(BoundReference<T> ref, Literal<T> lit) {
-      return visitors.stream().allMatch(v -> v.startsWith(ref, lit) == ROWS_MIGHT_MATCH);
+      return evaluators.stream().allMatch(v -> v.startsWith(ref, lit) == ROWS_MIGHT_MATCH);
     }
 
     @Override
     public <T> Boolean notStartsWith(BoundReference<T> ref, Literal<T> lit) {
-      return visitors.stream().allMatch(v -> v.notStartsWith(ref, lit) == ROWS_MIGHT_MATCH);
+      return evaluators.stream().allMatch(v -> v.notStartsWith(ref, lit) == ROWS_MIGHT_MATCH);
     }
 
     @Override
     public <T> Boolean handleNonReference(Bound<T> term) {
-      return visitors.stream().allMatch(v -> v.handleNonReference(term) == ROWS_MIGHT_MATCH);
+      return evaluators.stream().allMatch(v -> v.handleNonReference(term) == ROWS_MIGHT_MATCH);
     }
   }
 }

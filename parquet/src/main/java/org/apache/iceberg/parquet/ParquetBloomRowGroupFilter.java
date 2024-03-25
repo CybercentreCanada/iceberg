@@ -104,17 +104,12 @@ public class ParquetBloomRowGroupFilter {
     private Map<Integer, Type> types = null;
     private boolean initStatus = ROWS_MIGHT_MATCH;
 
-    @Override
-    public boolean getInitStatus() {
-      return initStatus;
-    }
-
     private BloomEvalVisitor(
         MessageType fileSchema, BlockMetaData rowGroup, BloomFilterReader bloomFilterReader) {
       this.initStatus = init(fileSchema, rowGroup, bloomFilterReader);
     }
 
-    private Boolean init(
+    private boolean init(
         MessageType fileSchema, BlockMetaData rowGroup, BloomFilterReader bloomFilterReader) {
       this.bloomReader = bloomFilterReader;
       this.fieldsWithBloomFilter = Sets.newHashSet();
@@ -152,6 +147,11 @@ public class ParquetBloomRowGroupFilter {
 
     private boolean eval() {
       return ExpressionVisitors.visitEvaluator(expr, this);
+    }
+
+    @Override
+    public boolean getInitStatus() {
+      return initStatus;
     }
 
     @Override

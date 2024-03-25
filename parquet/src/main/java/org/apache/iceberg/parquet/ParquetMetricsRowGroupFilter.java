@@ -89,16 +89,11 @@ public class ParquetMetricsRowGroupFilter {
     private Map<Integer, Function<Object, Object>> conversions = null;
     private boolean initStatus = ROWS_MIGHT_MATCH;
 
-    @Override
-    public boolean getInitStatus() {
-      return initStatus;
-    }
-
     private MetricsEvalVisitor(MessageType fileSchema, BlockMetaData rowGroup) {
       this.initStatus = init(fileSchema, rowGroup);
     }
 
-    private Boolean init(MessageType fileSchema, BlockMetaData rowGroup) {
+    private boolean init(MessageType fileSchema, BlockMetaData rowGroup) {
       if (rowGroup.getRowCount() <= 0) {
         return ROWS_CANNOT_MATCH;
       }
@@ -121,6 +116,11 @@ public class ParquetMetricsRowGroupFilter {
 
     private boolean eval() {
       return ExpressionVisitors.visitEvaluator(expr, this);
+    }
+
+    @Override
+    public boolean getInitStatus() {
+      return initStatus;
     }
 
     @Override
