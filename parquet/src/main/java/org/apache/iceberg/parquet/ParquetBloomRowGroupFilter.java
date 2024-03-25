@@ -301,8 +301,6 @@ public class ParquetBloomRowGroupFilter {
     private <T> boolean shouldRead(
         PrimitiveType primitiveType, T value, BloomFilter bloom, Type type) {
       long hashValue = 0;
-      LOG.error(
-          "rowgroup filter calling shouldread HERE!!!! {}", primitiveType.getPrimitiveTypeName());
       switch (primitiveType.getPrimitiveTypeName()) {
         case INT32:
           switch (type.typeId()) {
@@ -322,15 +320,11 @@ public class ParquetBloomRowGroupFilter {
             case DECIMAL:
               BigDecimal decimalValue = (BigDecimal) value;
               hashValue = bloom.hash(decimalValue.unscaledValue().longValue());
-              LOG.error("rowgroup filter HERE!!!!  found hash : {}", bloom.findHash(hashValue));
-              LOG.error("rowgroup filter HERE!!!! size is   : {}", bloom.getBitsetSize());
               return bloom.findHash(hashValue);
             case LONG:
             case TIME:
             case TIMESTAMP:
               hashValue = bloom.hash(((Number) value).longValue());
-              LOG.error("rowgroup filter HERE!!!!  found hash : {}", bloom.findHash(hashValue));
-              LOG.error("rowgroup filter HERE!!!! size is   : {}", bloom.getBitsetSize());
               return bloom.findHash(hashValue);
             default:
               return ROWS_MIGHT_MATCH;
