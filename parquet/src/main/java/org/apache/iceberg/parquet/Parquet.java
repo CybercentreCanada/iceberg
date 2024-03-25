@@ -114,6 +114,8 @@ import org.apache.parquet.hadoop.api.ReadSupport;
 import org.apache.parquet.hadoop.api.WriteSupport;
 import org.apache.parquet.hadoop.metadata.CompressionCodecName;
 import org.apache.parquet.schema.MessageType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class Parquet {
   private Parquet() {}
@@ -155,6 +157,7 @@ public class Parquet {
     private Function<Map<String, String>, Context> createContextFunc = Context::dataContext;
     private ByteBuffer fileEncryptionKey = null;
     private ByteBuffer fileAADPrefix = null;
+    private static final Logger LOG = LoggerFactory.getLogger(WriteBuilder.class);
 
     private WriteBuilder(OutputFile file) {
       this.file = file;
@@ -284,6 +287,7 @@ public class Parquet {
       int rowGroupCheckMinRecordCount = context.rowGroupCheckMinRecordCount();
       int rowGroupCheckMaxRecordCount = context.rowGroupCheckMaxRecordCount();
       int bloomFilterMaxBytes = context.bloomFilterMaxBytes();
+      LOG.error("HERE!!!! ... bloomFilterMaxBytes  : {}", bloomFilterMaxBytes);
       Map<String, String> columnBloomFilterEnabled = context.columnBloomFilterEnabled();
       boolean dictionaryEnabled = context.dictionaryEnabled();
 
@@ -330,6 +334,7 @@ public class Parquet {
           conf.set(entry.getKey(), entry.getValue());
         }
 
+        LOG.error("HERE!!!! hummm bloomFilterMaxBytes  : {}", bloomFilterMaxBytes);
         ParquetProperties.Builder propsBuilder =
             ParquetProperties.builder()
                 .withWriterVersion(writerVersion)
@@ -362,6 +367,7 @@ public class Parquet {
             writeMode,
             fileEncryptionProperties);
       } else {
+        LOG.error("HERE!!!! hummm2 bloomFilterMaxBytes  : {}", bloomFilterMaxBytes);
         ParquetWriteBuilder<D> parquetWriteBuilder =
             new ParquetWriteBuilder<D>(ParquetIO.file(file))
                 .withWriterVersion(writerVersion)
@@ -483,6 +489,8 @@ public class Parquet {
 
         boolean dictionaryEnabled =
             PropertyUtil.propertyAsBoolean(config, ParquetOutputFormat.ENABLE_DICTIONARY, true);
+
+        LOG.error("HERE!!!! bloomFilterMaxBytes  : {}", bloomFilterMaxBytes);
 
         return new Context(
             rowGroupSize,
@@ -606,6 +614,8 @@ public class Parquet {
       }
 
       int bloomFilterMaxBytes() {
+        LOG.error("HERE!!!! bloomFilterMaxBytes  : {}", bloomFilterMaxBytes);
+
         return bloomFilterMaxBytes;
       }
 

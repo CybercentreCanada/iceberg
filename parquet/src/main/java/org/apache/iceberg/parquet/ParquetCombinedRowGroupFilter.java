@@ -43,6 +43,10 @@ public class ParquetCombinedRowGroupFilter {
   private final ParquetDictionaryRowGroupFilter dictFilter;
   private final ParquetBloomRowGroupFilter bloomFilter;
 
+  public ParquetCombinedRowGroupFilter(Schema schema, Expression unbound) {
+    this(schema, unbound, true);
+  }
+
   public ParquetCombinedRowGroupFilter(Schema schema, Expression unbound, boolean caseSensitive) {
     this.schema = schema;
     this.statsFilter = new ParquetMetricsRowGroupFilter(schema, unbound, caseSensitive);
