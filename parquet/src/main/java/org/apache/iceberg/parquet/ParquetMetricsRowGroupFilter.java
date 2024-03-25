@@ -31,7 +31,6 @@ import org.apache.iceberg.expressions.Bound;
 import org.apache.iceberg.expressions.BoundReference;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.expressions.ExpressionVisitors;
-import org.apache.iceberg.expressions.ExpressionVisitors.BoundExpressionVisitor;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.expressions.Literal;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
@@ -70,18 +69,36 @@ public class ParquetMetricsRowGroupFilter {
    * @return false if the file cannot contain rows that match the expression, true otherwise.
    */
   public boolean shouldRead(MessageType fileSchema, BlockMetaData rowGroup) {
-    return new MetricsEvalVisitor().eval(fileSchema, rowGroup);
+    MetricsEvalVisitor visitor = buildVisitor(fileSchema, rowGroup);
+    if (visitor.getInitStatus() == ROWS_CANNOT_MATCH) {
+      return ROWS_CANNOT_MATCH;
+    }
+    return visitor.eval();
+  }
+
+  public MetricsEvalVisitor buildVisitor(MessageType fileSchema, BlockMetaData rowGroup) {
+    return new MetricsEvalVisitor(fileSchema, rowGroup);
   }
 
   private static final boolean ROWS_MIGHT_MATCH = true;
   private static final boolean ROWS_CANNOT_MATCH = false;
 
-  private class MetricsEvalVisitor extends BoundExpressionVisitor<Boolean> {
+  private class MetricsEvalVisitor extends ParquetRowGroupEvaluator {
     private Map<Integer, Statistics<?>> stats = null;
     private Map<Integer, Long> valueCounts = null;
     private Map<Integer, Function<Object, Object>> conversions = null;
+    private boolean initStatus = ROWS_MIGHT_MATCH;
 
-    private boolean eval(MessageType fileSchema, BlockMetaData rowGroup) {
+    @Override
+    public boolean getInitStatus() {
+      return initStatus;
+    }
+
+    private MetricsEvalVisitor(MessageType fileSchema, BlockMetaData rowGroup) {
+      this.initStatus = init(fileSchema, rowGroup);
+    }
+
+    private Boolean init(MessageType fileSchema, BlockMetaData rowGroup) {
       if (rowGroup.getRowCount() <= 0) {
         return ROWS_CANNOT_MATCH;
       }
@@ -99,7 +116,10 @@ public class ParquetMetricsRowGroupFilter {
           conversions.put(id, ParquetConversions.converterFromParquet(colType, icebergType));
         }
       }
+      return ROWS_MIGHT_MATCH;
+    }
 
+    private boolean eval() {
       return ExpressionVisitors.visitEvaluator(expr, this);
     }
 

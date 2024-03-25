@@ -29,7 +29,6 @@ import org.apache.iceberg.expressions.Bound;
 import org.apache.iceberg.expressions.BoundReference;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.expressions.ExpressionVisitors;
-import org.apache.iceberg.expressions.ExpressionVisitors.BoundExpressionVisitor;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.expressions.Literal;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableList;
@@ -80,21 +79,42 @@ public class ParquetBloomRowGroupFilter {
    */
   public boolean shouldRead(
       MessageType fileSchema, BlockMetaData rowGroup, BloomFilterReader bloomReader) {
-    return new BloomEvalVisitor().eval(fileSchema, rowGroup, bloomReader);
+
+    BloomEvalVisitor visitor = buildVisitor(fileSchema, rowGroup, bloomReader);
+    if (visitor.getInitStatus() == ROWS_CANNOT_MATCH) {
+      return ROWS_CANNOT_MATCH;
+    }
+    return visitor.eval();
+  }
+
+  public BloomEvalVisitor buildVisitor(
+      MessageType fileSchema, BlockMetaData rowGroup, BloomFilterReader bloomReader) {
+    return new BloomEvalVisitor(fileSchema, rowGroup, bloomReader);
   }
 
   private static final boolean ROWS_MIGHT_MATCH = true;
   private static final boolean ROWS_CANNOT_MATCH = false;
 
-  private class BloomEvalVisitor extends BoundExpressionVisitor<Boolean> {
+  private class BloomEvalVisitor extends ParquetRowGroupEvaluator {
     private BloomFilterReader bloomReader;
     private Set<Integer> fieldsWithBloomFilter = null;
     private Map<Integer, ColumnChunkMetaData> columnMetaMap = null;
     private Map<Integer, BloomFilter> bloomCache = null;
     private Map<Integer, PrimitiveType> parquetPrimitiveTypes = null;
     private Map<Integer, Type> types = null;
+    private boolean initStatus = ROWS_MIGHT_MATCH;
 
-    private boolean eval(
+    @Override
+    public boolean getInitStatus() {
+      return initStatus;
+    }
+
+    private BloomEvalVisitor(
+        MessageType fileSchema, BlockMetaData rowGroup, BloomFilterReader bloomFilterReader) {
+      this.initStatus = init(fileSchema, rowGroup, bloomFilterReader);
+    }
+
+    private Boolean init(
         MessageType fileSchema, BlockMetaData rowGroup, BloomFilterReader bloomFilterReader) {
       this.bloomReader = bloomFilterReader;
       this.fieldsWithBloomFilter = Sets.newHashSet();
@@ -127,7 +147,10 @@ public class ParquetBloomRowGroupFilter {
           LOG.debug("Using Bloom filters for columns with IDs: {}", overlappedBloomFilters);
         }
       }
+      return ROWS_MIGHT_MATCH;
+    }
 
+    private boolean eval() {
       return ExpressionVisitors.visitEvaluator(expr, this);
     }
 

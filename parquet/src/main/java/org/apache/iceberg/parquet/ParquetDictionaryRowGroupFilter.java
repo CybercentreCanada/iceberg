@@ -30,7 +30,6 @@ import org.apache.iceberg.expressions.Bound;
 import org.apache.iceberg.expressions.BoundReference;
 import org.apache.iceberg.expressions.Expression;
 import org.apache.iceberg.expressions.ExpressionVisitors;
-import org.apache.iceberg.expressions.ExpressionVisitors.BoundExpressionVisitor;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.expressions.Literal;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
@@ -72,21 +71,43 @@ public class ParquetDictionaryRowGroupFilter {
    */
   public boolean shouldRead(
       MessageType fileSchema, BlockMetaData rowGroup, DictionaryPageReadStore dictionaries) {
-    return new EvalVisitor().eval(fileSchema, rowGroup, dictionaries);
+    EvalVisitor visitor = buildVisitor(fileSchema, rowGroup, dictionaries);
+    if (visitor.getInitStatus() == ROWS_CANNOT_MATCH) {
+      return ROWS_CANNOT_MATCH;
+    }
+    return visitor.eval();
+  }
+
+  public EvalVisitor buildVisitor(
+      MessageType fileSchema, BlockMetaData rowGroup, DictionaryPageReadStore dictionaries) {
+    return new EvalVisitor(fileSchema, rowGroup, dictionaries);
   }
 
   private static final boolean ROWS_MIGHT_MATCH = true;
   private static final boolean ROWS_CANNOT_MATCH = false;
 
-  private class EvalVisitor extends BoundExpressionVisitor<Boolean> {
+  private class EvalVisitor extends ParquetRowGroupEvaluator {
     private DictionaryPageReadStore dictionaries = null;
     private Map<Integer, Set<?>> dictCache = null;
     private Map<Integer, Boolean> isFallback = null;
     private Map<Integer, Boolean> mayContainNulls = null;
     private Map<Integer, ColumnDescriptor> cols = null;
     private Map<Integer, Function<Object, Object>> conversions = null;
+    private boolean initStatus = ROWS_MIGHT_MATCH;
 
-    private boolean eval(
+    @Override
+    public boolean getInitStatus() {
+      return initStatus;
+    }
+
+    private EvalVisitor(
+        MessageType fileSchema,
+        BlockMetaData rowGroup,
+        DictionaryPageReadStore dictionaryReadStore) {
+      this.initStatus = init(fileSchema, rowGroup, dictionaryReadStore);
+    }
+
+    private Boolean init(
         MessageType fileSchema,
         BlockMetaData rowGroup,
         DictionaryPageReadStore dictionaryReadStore) {
@@ -115,7 +136,10 @@ public class ParquetDictionaryRowGroupFilter {
           mayContainNulls.put(id, mayContainNull(meta));
         }
       }
+      return ROWS_MIGHT_MATCH;
+    }
 
+    private boolean eval() {
       return ExpressionVisitors.visitEvaluator(expr, this);
     }
 
