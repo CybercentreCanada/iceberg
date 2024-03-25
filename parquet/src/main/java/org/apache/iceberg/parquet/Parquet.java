@@ -330,7 +330,6 @@ public class Parquet {
           conf.set(entry.getKey(), entry.getValue());
         }
 
-        LOG.error("HERE!!!! hummm bloomFilterMaxBytes  : {}", bloomFilterMaxBytes);
         ParquetProperties.Builder propsBuilder =
             ParquetProperties.builder()
                 .withWriterVersion(writerVersion)
