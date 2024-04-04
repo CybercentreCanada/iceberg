@@ -19,6 +19,7 @@
 package org.apache.iceberg.parquet;
 
 import static org.apache.iceberg.TableProperties.PARQUET_BLOOM_FILTER_COLUMN_ENABLED_PREFIX;
+import static org.apache.iceberg.TableProperties.PARQUET_DICT_SIZE_BYTES;
 import static org.apache.iceberg.avro.AvroSchemaUtil.convert;
 import static org.apache.iceberg.expressions.Expressions.and;
 import static org.apache.iceberg.expressions.Expressions.equal;
@@ -113,7 +114,9 @@ public class TestBloomRowGroupFilter {
           optional(24, "binary", Types.BinaryType.get()),
           optional(25, "int_decimal", Types.DecimalType.of(8, 2)),
           optional(26, "long_decimal", Types.DecimalType.of(14, 2)),
-          optional(27, "fixed_decimal", Types.DecimalType.of(31, 2)));
+          optional(27, "fixed_decimal", Types.DecimalType.of(31, 2)),
+          optional(28, "no_dict", StringType.get()),
+          optional(29, "with_dict", StringType.get()));
 
   private static final Types.StructType _structFieldType =
       Types.StructType.of(Types.NestedField.required(16, "_int_field", IntegerType.get()));
@@ -144,7 +147,9 @@ public class TestBloomRowGroupFilter {
           optional(24, "_binary", Types.BinaryType.get()),
           optional(25, "_int_decimal", Types.DecimalType.of(8, 2)),
           optional(26, "_long_decimal", Types.DecimalType.of(14, 2)),
-          optional(27, "_fixed_decimal", Types.DecimalType.of(31, 2)));
+          optional(27, "_fixed_decimal", Types.DecimalType.of(31, 2)),
+          optional(28, "_no_dict", StringType.get()),
+          optional(29, "_with_dict", StringType.get()));
 
   private static final String TOO_LONG_FOR_STATS;
 
@@ -201,7 +206,8 @@ public class TestBloomRowGroupFilter {
     try (FileAppender<Record> appender =
         Parquet.write(outFile)
             .schema(FILE_SCHEMA)
-            .set(ParquetOutputFormat.ENABLE_DICTIONARY, "false")
+            .set(PARQUET_DICT_SIZE_BYTES, "1024")
+            .set(ParquetOutputFormat.ENABLE_DICTIONARY, "true")
             .set(PARQUET_BLOOM_FILTER_COLUMN_ENABLED_PREFIX + "_id", "true")
             .set(PARQUET_BLOOM_FILTER_COLUMN_ENABLED_PREFIX + "_long", "true")
             .set(PARQUET_BLOOM_FILTER_COLUMN_ENABLED_PREFIX + "_double", "true")
@@ -227,43 +233,51 @@ public class TestBloomRowGroupFilter {
             .set(PARQUET_BLOOM_FILTER_COLUMN_ENABLED_PREFIX + "_int_decimal", "true")
             .set(PARQUET_BLOOM_FILTER_COLUMN_ENABLED_PREFIX + "_long_decimal", "true")
             .set(PARQUET_BLOOM_FILTER_COLUMN_ENABLED_PREFIX + "_fixed_decimal", "true")
+            .set(PARQUET_BLOOM_FILTER_COLUMN_ENABLED_PREFIX + "_no_dict", "true")
+            .set(PARQUET_BLOOM_FILTER_COLUMN_ENABLED_PREFIX + "_with_dict", "true")
             .build()) {
       GenericRecordBuilder builder = new GenericRecordBuilder(convert(FILE_SCHEMA, "table"));
-      // create 50 records
-      for (int i = 0; i < INT_VALUE_COUNT; i += 1) {
-        builder.set("_id", INT_MIN_VALUE + i); // min=30, max=79, num-nulls=0
-        builder.set("_long", LONG_BASE + INT_MIN_VALUE + i); // min=130L, max=179L, num-nulls=0
-        builder.set(
-            "_double", DOUBLE_BASE + INT_MIN_VALUE + i); // min=1030D, max=1079D, num-nulls=0
-        builder.set(
-            "_float", FLOAT_BASE + INT_MIN_VALUE + i); // min=10030F, max=10079F, num-nulls=0
-        builder.set(
-            "_string",
-            BINARY_PREFIX + (INT_MIN_VALUE + i)); // min=BINARY测试_30, max=BINARY测试_79, num-nulls=0
-        builder.set("_uuid", RANDOM_UUIDS.get(i)); // required, random uuid, always non-null
-        builder.set("_required", "req"); // required, always non-null
-        builder.set("_non_bloom", RANDOM_UUIDS.get(i)); // bloom filter not enabled
-        builder.set("_all_nulls", null); // never non-null
-        builder.set("_some_nulls", (i % 10 == 0) ? null : "some"); // includes some null values
-        builder.set("_no_nulls", ""); // optional, but always non-null
-        builder.set("_all_nans", Double.NaN); // never non-nan
-        builder.set("_some_nans", (i % 10 == 0) ? Float.NaN : 2F); // includes some nan values
-        builder.set("_no_nans", 3D); // optional, but always non-nan
-        Record structNotNull = new Record(structSchema);
-        structNotNull.put("_int_field", INT_MIN_VALUE + i);
-        builder.set("_struct_not_null", structNotNull); // struct with int
-        builder.set("_no_stats", TOO_LONG_FOR_STATS); // value longer than 4k will produce no stats
-        builder.set("_boolean", i % 2 == 0);
-        builder.set("_time", instant.plusSeconds(i * 86400).toEpochMilli());
-        builder.set("_date", instant.plusSeconds(i * 86400).getEpochSecond());
-        builder.set("_timestamp", instant.plusSeconds(i * 86400).toEpochMilli());
-        builder.set("_timestamptz", instant.plusSeconds(i * 86400).toEpochMilli());
-        builder.set("_binary", RANDOM_BYTES.get(i));
-        builder.set("_int_decimal", new BigDecimal(String.valueOf(77.77 + i)));
-        builder.set("_long_decimal", new BigDecimal(String.valueOf(88.88 + i)));
-        builder.set("_fixed_decimal", new BigDecimal(String.valueOf(99.99 + i)));
+      // create 20 copies of each record to ensure dictionary-encoding
+      for (int copy = 0; copy < 20; copy += 1) {
+        // create 50 records
+        for (int i = 0; i < INT_VALUE_COUNT; i += 1) {
+          builder.set("_id", INT_MIN_VALUE + i); // min=30, max=79, num-nulls=0
+          builder.set("_long", LONG_BASE + INT_MIN_VALUE + i); // min=130L, max=179L, num-nulls=0
+          builder.set(
+              "_double", DOUBLE_BASE + INT_MIN_VALUE + i); // min=1030D, max=1079D, num-nulls=0
+          builder.set(
+              "_float", FLOAT_BASE + INT_MIN_VALUE + i); // min=10030F, max=10079F, num-nulls=0
+          builder.set(
+              "_string",
+              BINARY_PREFIX + (INT_MIN_VALUE + i)); // min=BINARY测试_30, max=BINARY测试_79, num-nulls=0
+          builder.set("_uuid", RANDOM_UUIDS.get(i)); // required, random uuid, always non-null
+          builder.set("_required", "req" + (i * 2)); // required, always non-null
+          builder.set("_non_bloom", RANDOM_UUIDS.get(i)); // bloom filter not enabled
+          builder.set("_all_nulls", null); // never non-null
+          builder.set("_some_nulls", (i % 10 == 0) ? null : "some"); // includes some null values
+          builder.set("_no_nulls", ""); // optional, but always non-null
+          builder.set("_all_nans", Double.NaN); // never non-nan
+          builder.set("_some_nans", (i % 10 == 0) ? Float.NaN : 2F); // includes some nan values
+          builder.set("_no_nans", 3D); // optional, but always non-nan
+          Record structNotNull = new Record(structSchema);
+          structNotNull.put("_int_field", INT_MIN_VALUE + i);
+          builder.set("_struct_not_null", structNotNull); // struct with int
+          builder.set(
+              "_no_stats", TOO_LONG_FOR_STATS); // value longer than 4k will produce no stats
+          builder.set("_boolean", i % 2 == 0);
+          builder.set("_time", instant.plusSeconds(i * 86400).toEpochMilli());
+          builder.set("_date", instant.plusSeconds(i * 86400).getEpochSecond());
+          builder.set("_timestamp", instant.plusSeconds(i * 86400).toEpochMilli());
+          builder.set("_timestamptz", instant.plusSeconds(i * 86400).toEpochMilli());
+          builder.set("_binary", RANDOM_BYTES.get(i));
+          builder.set("_int_decimal", new BigDecimal(String.valueOf(77.77 + i)));
+          builder.set("_long_decimal", new BigDecimal(String.valueOf(88.88 + i)));
+          builder.set("_fixed_decimal", new BigDecimal(String.valueOf(99.99 + i)));
+          builder.set("_no_dict", TOO_LONG_FOR_STATS);
+          builder.set("_with_dict", "req" + (i * 2));
 
-        appender.add(builder.build());
+          appender.add(builder.build());
+        }
       }
     }
 
@@ -1196,11 +1210,43 @@ public class TestBloomRowGroupFilter {
   @Test
   public void testParquetFindsResidual() {
     // `string` col has no dict, this should be eliminated by bloom filter
-    Expression bloom = equal("string", "BINARY测试_301");
+    Expression bloom = equal("no_dict", "a");
     // should be eliminated by dictionary filter
-    Expression dict = equal("no_stats", "a");
+    Expression dict = equal("with_dict", "req1");
     // should be eliminated by bloom filter
-    Expression metric = greaterThan("id", INT_MAX_VALUE);
+    Expression metric = equal("id", 1000);
+
+    boolean shouldRead =
+        new ParquetMetricsRowGroupFilter(SCHEMA, metric)
+            .shouldRead(parquetSchema, rowGroupMetadata);
+    assertThat(shouldRead).as("Metric should skip: outside range").isFalse();
+
+    shouldRead =
+        new ParquetMetricsRowGroupFilter(SCHEMA, dict).shouldRead(parquetSchema, rowGroupMetadata);
+    assertThat(shouldRead).as("Metric should read: inside range").isTrue();
+
+    shouldRead =
+        new ParquetMetricsRowGroupFilter(SCHEMA, bloom).shouldRead(parquetSchema, rowGroupMetadata);
+    assertThat(shouldRead).as("Metric should read: inside range").isTrue();
+
+    shouldRead =
+        new ParquetDictionaryRowGroupFilter(SCHEMA, dict)
+            .shouldRead(
+                parquetSchema, rowGroupMetadata, reader.getDictionaryReader(rowGroupMetadata));
+    assertThat(shouldRead).as("Dictionary should skip: no match in dictionary").isFalse();
+
+    shouldRead =
+        new ParquetDictionaryRowGroupFilter(SCHEMA, bloom)
+            .shouldRead(
+                parquetSchema, rowGroupMetadata, reader.getDictionaryReader(rowGroupMetadata));
+    assertThat(shouldRead).as("Dictionary should read: not dictionary encoded").isTrue();
+
+    shouldRead =
+        new ParquetBloomRowGroupFilter(SCHEMA, bloom)
+            .shouldRead(
+                parquetSchema, rowGroupMetadata, reader.getBloomFilterDataReader(rowGroupMetadata));
+    assertThat(shouldRead).as("Bloom should skip: not in bloom").isFalse();
+
     Expression expr = or(bloom, or(dict, metric));
 
     // bloom OR (dict OR metric) -> bloom OR dict
@@ -1212,6 +1258,7 @@ public class TestBloomRowGroupFilter {
         .isTrue();
 
     // bloom OR dict -> bloom
+    // Should skip: no stats but dictionary is present
     expected = Binder.bind(SCHEMA.asStruct(), bloom, true);
     ParquetDictionaryRowGroupFilter dictFilter =
         new ParquetDictionaryRowGroupFilter(SCHEMA, metricResidual);
@@ -1222,6 +1269,7 @@ public class TestBloomRowGroupFilter {
         .as("Dictionary expected residual: %s, actual residual: %s", expected, dictResidual)
         .isTrue();
 
+    // bloom -> false
     expected = Expressions.alwaysFalse();
     ParquetBloomRowGroupFilter bloomFilter = new ParquetBloomRowGroupFilter(SCHEMA, dictResidual);
     Expression bloomResidual =
