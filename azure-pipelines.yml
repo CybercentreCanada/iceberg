@@ -16,6 +16,12 @@ pr:
       - develop
       - iceberg-*
 
+parameters:
+  - name: forceBuildPython
+    displayName: Force build java artifact & push to feed
+    type: boolean
+    default: false      
+
 pool:
   vmImage: ubuntu-latest
 
@@ -47,7 +53,7 @@ steps:
       publishLocation: "Container"    
   - task: Gradle@2
     displayName: 'Publish org.cccs.iceberg'
-    condition: and(succeeded(), eq(variables.isPublish, true))
+    condition: and(succeeded(), or(eq(variables.isPublish, true), eq('${{ parameters.forceBuildPython }}', true)))
     inputs:
       workingDirectory: ''
       gradleWrapperFile: 'gradlew'
