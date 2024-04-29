@@ -21,16 +21,26 @@ package org.apache.iceberg.jdbc;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.sql.SQLNonTransientConnectionException;
+import java.sql.SQLTransientException;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.ClientPoolImpl;
+import org.apache.iceberg.relocated.com.google.common.collect.ImmutableSet;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class JdbcClientPool extends ClientPoolImpl<Connection, SQLException> {
 
   private final String dbUrl;
   private final Map<String, String> properties;
+
+  private static final Logger LOG = LoggerFactory.getLogger(JdbcClientPool.class);
+
+  private static final Set<String> RETRYABLE_CONNECTION_SQL_STATES =
+      // CCCS modification: added state 57000 for PostgresQL connection timeout.
+      ImmutableSet.of("08000", "08003", "08006", "08004", "08007", "57000");
 
   public JdbcClientPool(String dbUrl, Map<String, String> props) {
     this(
@@ -43,7 +53,7 @@ public class JdbcClientPool extends ClientPoolImpl<Connection, SQLException> {
   }
 
   public JdbcClientPool(int poolSize, String dbUrl, Map<String, String> props) {
-    super(poolSize, SQLNonTransientConnectionException.class, true);
+    super(poolSize, SQLTransientException.class, true);
     properties = props;
     this.dbUrl = dbUrl;
   }
@@ -56,6 +66,23 @@ public class JdbcClientPool extends ClientPoolImpl<Connection, SQLException> {
     } catch (SQLException e) {
       throw new UncheckedSQLException(e, "Failed to connect: %s", dbUrl);
     }
+  }
+
+  @Override
+  protected boolean isConnectionException(Exception exc) {
+    return super.isConnectionException(exc) || isRetryableConnectionException(exc);
+  }
+
+  private boolean isRetryableConnectionException(Exception exc) {
+    boolean retry =
+        exc instanceof SQLException
+            && RETRYABLE_CONNECTION_SQL_STATES.contains(((SQLException) exc).getSQLState());
+    if (!retry) {
+      LOG.info(
+          "Not a retryable connection exception. class name: ",
+          exc.getClass().getName() + " sql state: " + ((SQLException) exc).getSQLState());
+    }
+    return retry;
   }
 
   @Override
