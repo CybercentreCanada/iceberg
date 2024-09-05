@@ -20,7 +20,7 @@ pool:
   vmImage: ubuntu-latest
 
 variables:
-  isPublish: $[eq(variables['Build.SourceBranch'], 'refs/heads/iceberg-1.5.2-0')]
+  isPublish: $[eq(variables['Build.SourceBranch'], 'refs/heads/iceberg-1.5.2-1')]
 
 steps:
   - task: Gradle@2
