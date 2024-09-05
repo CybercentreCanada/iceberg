@@ -7,20 +7,20 @@ trigger:
   batch: true
   branches:
     include:
-      - develop
+      - cccs-release
       - iceberg-*
 
 pr:
   branches:
     include:
-      - develop
+      - cccs-release
       - iceberg-*
 
 pool:
   vmImage: ubuntu-latest
 
 variables:
-  isPublish: $[eq(variables['Build.SourceBranch'], 'refs/heads/iceberg-1.5.2-0')]
+  isPublish: $[eq(variables['Build.SourceBranch'], 'refs/heads/cccs-release')]
 
 steps:
   - task: Gradle@2
