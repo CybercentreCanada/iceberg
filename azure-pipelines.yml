@@ -24,7 +24,7 @@ variables:
 steps:
   - bash: |
       echo "------"
-      echo "my maven_user is: $MAVEN_USER"
+      echo "my maven_user is: $(MAVENUSER)"
     displayName: 'Copy spark jars'    
     env:
       MAVEN_USER: $(MAVENUSER)
