@@ -68,7 +68,7 @@ steps:
       publishJUnitResults: true
       testResultsFiles: '**/TEST-*.xml'
       tasks: 'publish'
-      # options: '-PmavenUser=$(MAVENUSER) -PmavenPassword=$(MAVENPWD)'
+      options: '-PmavenUser=$(MAVENUSER) -PmavenPassword=$(MAVENPWD)'
     env:
       MAVENUSER: $(MAVENUSER)
       MAVENPWD: $(MAVENPWD)
