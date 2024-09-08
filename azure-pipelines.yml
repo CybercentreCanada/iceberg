@@ -23,6 +23,14 @@ variables:
   isPublish: $[eq(variables['Build.SourceBranch'], 'refs/heads/cccs-release')]
 
 steps:
+  - script: |
+      ./cccs-publish.sh
+      echo "------"
+      echo "$MAVENUSER"
+    condition: succeeded()
+    displayName: 'Copy spark jars'    
+    env:
+      MAVENUSER: $(MAVENUSER)
   - task: Gradle@2
     displayName: 'Build org.cccs.iceberg'
     inputs:
@@ -60,7 +68,8 @@ steps:
       jdkArchitectureOption: 'x64'
       publishJUnitResults: true
       testResultsFiles: '**/TEST-*.xml'
-      tasks: 'publish -PmavenUser=$(MAVENUSER) -PmavenPassword=$(MAVENPWD) '
+      tasks: 'publish'
+      options: '-PmavenUser=$(MAVENUSER) -PmavenPassword=$(MAVENPWD)'
     env:
       MAVENUSER: $(MAVENUSER)
       MAVENPWD: $(MAVENPWD)
