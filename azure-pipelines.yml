@@ -34,7 +34,7 @@ steps:
       jdkArchitectureOption: 'x64'
       publishJUnitResults: true
       testResultsFiles: '**/TEST-*.xml'
-      tasks: 'build -x test -x integrationTest -x functionalTest'
+      tasks: 'build -x test -x integrationTest'
   - script: |
       ./cccs-publish.sh
     condition: succeeded()
