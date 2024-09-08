@@ -71,6 +71,11 @@ subprojects {
       }
     }
 
+    plugins {
+        id 'maven-publish'
+        id 'net.linguica.maven-settings' version '0.5'
+    }    
+
     publishing {
       publications {
         apache(MavenPublication) {
@@ -126,6 +131,11 @@ subprojects {
         maven {
           name = 'cccs-stratus'
           url = 'https://pkgs.dev.azure.com/cccs-stratus/_packaging/cccs-stratus/maven/v1'
+          credentials {
+              // Automatically retrieves credentials from Maven settings.xml
+              username = mavenSettings.server('cccs-stratus').username
+              password = mavenSettings.server('cccs-stratus').password
+          }          
         }
       }
     }

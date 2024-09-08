@@ -34,7 +34,7 @@ steps:
       jdkArchitectureOption: 'x64'
       publishJUnitResults: true
       testResultsFiles: '**/TEST-*.xml'
-      tasks: 'build -x test -x integrationTest'
+      tasks: 'build -x test -x integrationTest -x functionalTest'
   - script: |
       ./cccs-publish.sh
     condition: succeeded()
@@ -57,4 +57,4 @@ steps:
       jdkArchitectureOption: 'x64'
       publishJUnitResults: true
       testResultsFiles: '**/TEST-*.xml'
-      tasks: 'publish -PmavenUser=$(MAVENUSER) -PmavenPassword=$(MAVENPWD) '
+      tasks: 'publish'
