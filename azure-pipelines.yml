@@ -27,7 +27,6 @@ steps:
       ./cccs-publish.sh
       echo "------"
       echo "$MAVENUSER"
-    condition: succeeded()
     displayName: 'Copy spark jars'    
     env:
       MAVENUSER: $(MAVENUSER)
@@ -69,7 +68,7 @@ steps:
       publishJUnitResults: true
       testResultsFiles: '**/TEST-*.xml'
       tasks: 'publish'
-      options: '-PmavenUser=$(MAVENUSER) -PmavenPassword=$(MAVENPWD)'
+      # options: '-PmavenUser=$(MAVENUSER) -PmavenPassword=$(MAVENPWD)'
     env:
       MAVENUSER: $(MAVENUSER)
       MAVENPWD: $(MAVENPWD)
