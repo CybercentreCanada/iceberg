@@ -124,11 +124,12 @@ subprojects {
 
       repositories {
         maven {
-          credentials {
-            username project.hasProperty('mavenUser') ? "$mavenUser" : ""
-            password project.hasProperty('mavenPassword') ? "$mavenPassword" : ""
-          }
+          name = 'cccs-stratus'
           url = 'https://pkgs.dev.azure.com/cccs-stratus/_packaging/cccs-stratus/maven/v1'
+          credentials {
+            username project.findProperty('mavenUser')
+            password project.findProperty('mavenPassword')
+          }
         }
       }
     }

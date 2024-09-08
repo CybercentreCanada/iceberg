@@ -37,8 +37,11 @@ steps:
       tasks: 'build -x test -x integrationTest'
   - script: |
       ./cccs-publish.sh
+      echo $MAVENUSER
     condition: succeeded()
     displayName: 'Copy spark jars'    
+    env:
+      MAVENUSER: $(MAVENUSER)
   - task: PublishBuildArtifacts@1
     condition: succeeded()
     inputs:
