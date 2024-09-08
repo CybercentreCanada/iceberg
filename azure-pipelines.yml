@@ -18,8 +18,11 @@ pr:
 pool:
   vmImage: ubuntu-latest
 
+
 variables:
-  isPublish: $[eq(variables['Build.SourceBranch'], 'refs/heads/cccs-release')]
+  - group: MAVEN_PUBLISH_ARGS
+  - name: isPublish
+    value: $[eq(variables['Build.SourceBranch'], 'refs/heads/cccs-release')]
 
 steps:
   - bash: |
