@@ -95,23 +95,6 @@ public class JdbcClientPool extends ClientPoolImpl<Connection, SQLException> {
   }
 
   @Override
-  protected boolean isConnectionException(Exception exc) {
-    return super.isConnectionException(exc) || isRetryableConnectionException(exc);
-  }
-
-  private boolean isRetryableConnectionException(Exception exc) {
-    boolean retry =
-        exc instanceof SQLException
-            && RETRYABLE_CONNECTION_SQL_STATES.contains(((SQLException) exc).getSQLState());
-    if (!retry) {
-      LOG.info(
-          "Not a retryable connection exception. class name: ",
-          exc.getClass().getName() + " sql state: " + ((SQLException) exc).getSQLState());
-    }
-    return retry;
-  }
-
-  @Override
   protected Connection reconnect(Connection client) {
     close(client);
     return newClient();
