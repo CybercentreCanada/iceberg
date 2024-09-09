@@ -124,8 +124,15 @@ subprojects {
 
       repositories {
         maven {
-          name = 'cccs-stratus'
-          url = 'https://pkgs.dev.azure.com/cccs-stratus/_packaging/cccs-stratus/maven/v1'
+          url 'https://pkgs.dev.azure.com/cccs-stratus/_packaging/cccs-stratus/maven/v1'
+          name 'cccs-stratus'
+          authentication {
+            basic(BasicAuthentication)
+          }          
+          credentials {
+            username project.findProperty('mavenUser')
+            password project.findProperty('mavenPassword')
+          }
         }
       }
     }

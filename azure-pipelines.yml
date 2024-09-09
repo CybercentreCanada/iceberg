@@ -4,7 +4,6 @@
 # https://aka.ms/yaml
 
 trigger:
-  batch: true
   branches:
     include:
       - cccs-release
@@ -19,8 +18,11 @@ pr:
 pool:
   vmImage: ubuntu-latest
 
+
 variables:
-  isPublish: $[eq(variables['Build.SourceBranch'], 'refs/heads/cccs-release')]
+  - group: MAVEN_PUBLISH_ARGS
+  - name: isPublish
+    value: $[eq(variables['Build.SourceBranch'], 'refs/heads/cccs-release')]
 
 steps:
   - task: Gradle@2
@@ -57,4 +59,5 @@ steps:
       jdkArchitectureOption: 'x64'
       publishJUnitResults: true
       testResultsFiles: '**/TEST-*.xml'
-      tasks: 'publish -PmavenUser=$(MAVENUSER) -PmavenPassword=$(MAVENPWD) '
+      tasks: 'publish'
+      options: '-PmavenUser=$(MAVENUSER) -PmavenPassword=$(MAVENPWD)'
