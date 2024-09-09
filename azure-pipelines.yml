@@ -25,12 +25,6 @@ variables:
     value: $[eq(variables['Build.SourceBranch'], 'refs/heads/cccs-release')]
 
 steps:
-  - bash: |
-      echo "------"
-      echo "my maven_user is: $(MAVENUSER)"
-    displayName: 'Copy spark jars'    
-    env:
-      MAVEN_USER: $(MAVENUSER)
   - task: Gradle@2
     displayName: 'Build org.cccs.iceberg'
     inputs:
@@ -45,11 +39,8 @@ steps:
       tasks: 'build -x test -x integrationTest'
   - script: |
       ./cccs-publish.sh
-      echo $MAVENUSER
     condition: succeeded()
     displayName: 'Copy spark jars'    
-    env:
-      MAVENUSER: $(MAVENUSER)
   - task: PublishBuildArtifacts@1
     condition: succeeded()
     inputs:
