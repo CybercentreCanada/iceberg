@@ -94,11 +94,10 @@ subprojects {
             }
           }
 
-          // CCCS modification: starts
-          // groupId = 'org.apache.iceberg'
+          // CCCS modification starts
           groupId = 'cccs.ap.iceberg'
           version = "1.6.1.0-SNAPSHOT"
-          // CCCS modification: ends
+          // CCCS modification ends
           pom {
             name = 'Apache Iceberg'
             description = 'A table format for huge analytic datasets'
