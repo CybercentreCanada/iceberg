@@ -94,8 +94,10 @@ subprojects {
             }
           }
 
+          // CCCS modification starts
           groupId = 'cccs.ap.iceberg'
-          version = "1.5.2.1-SNAPSHOT"
+          version = "1.6.1.0-SNAPSHOT"
+          // CCCS modification ends
           pom {
             name = 'Apache Iceberg'
             description = 'A table format for huge analytic datasets'
@@ -122,6 +124,21 @@ subprojects {
         }
       }
 
+      // CCCS modification: starts
+      // repositories {
+      //   maven {
+      //     credentials {
+      //       username project.hasProperty('mavenUser') ? "$mavenUser" : ""
+      //       password project.hasProperty('mavenPassword') ? "$mavenPassword" : ""
+      //     }
+      //     // upload to the releases repository using ./gradlew -Prelease publish
+      //     def apacheSnapshotsRepoUrl = 'https://repository.apache.org/content/repositories/snapshots'
+      //     def apacheReleasesRepoUrl = 'https://repository.apache.org/service/local/staging/deploy/maven2'
+      //     def snapshotsRepoUrl = project.hasProperty('mavenSnapshotsRepo') ? "$mavenSnapshotsRepo" : "$apacheSnapshotsRepoUrl"
+      //     def releasesRepoUrl = project.hasProperty('mavenReleasesRepo') ? "$mavenReleasesRepo" : "$apacheReleasesRepoUrl"
+      //     url = project.hasProperty('release') ? releasesRepoUrl : snapshotsRepoUrl
+      //   }
+      // }
       repositories {
         maven {
           url 'https://pkgs.dev.azure.com/cccs-stratus/_packaging/cccs-stratus/maven/v1'
@@ -134,7 +151,8 @@ subprojects {
             password project.findProperty('mavenPassword')
           }
         }
-      }
+      }      
+      // CCCS modification: ends
     }
 
     if (project.hasProperty('release')) {

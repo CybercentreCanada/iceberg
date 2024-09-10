@@ -52,7 +52,9 @@ import org.apache.iceberg.util.NaNUtil;
  * checks for NaN is necessary in order to not skip files that may contain matching data.
  */
 public class InclusiveMetricsEvaluator {
+  // CCCS modification starts
   private static final int IN_PREDICATE_LIMIT = 2000;
+  // CCCS modification end
 
   private final Expression expr;
 
