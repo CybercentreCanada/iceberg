@@ -22,7 +22,7 @@ pool:
 variables:
   - group: MAVEN_PUBLISH_ARGS
   - name: isPublish
-    value: $[eq(variables['Build.SourceBranch'], 'refs/heads/cccs-release')]
+    value: true #$[eq(variables['Build.SourceBranch'], 'refs/heads/cccs-release')]
 
 steps:
   - task: Gradle@2
