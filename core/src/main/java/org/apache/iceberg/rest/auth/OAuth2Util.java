@@ -72,6 +72,7 @@ public class OAuth2Util {
   private static final String CLIENT_CREDENTIALS = "client_credentials";
   // CCCS EDIT
   private static final String TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:jwt-bearer";
+  private static final String ASSERTION = "assertion";
   private static final String REQUESTED_TOKEN_USE = "requested_token_use";
   private static final String ON_BEHALF_OF = "on_behalf_of";
   // END CCCS EDIT
@@ -319,6 +320,7 @@ public class OAuth2Util {
     ImmutableMap.Builder<String, String> formData = ImmutableMap.builder();
     formData.put(GRANT_TYPE, TOKEN_EXCHANGE);
     // CCCS EDIT
+    formData.put(ASSERTION, subjectToken);
     formData.put(REQUESTED_TOKEN_USE, ON_BEHALF_OF);
     // END CCCS EDIT
     formData.put(SCOPE, toScope(scopes));
