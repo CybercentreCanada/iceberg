@@ -36,8 +36,7 @@ steps:
       jdkArchitectureOption: 'x64'
       publishJUnitResults: true
       testResultsFiles: '**/TEST-*.xml'
-      tasks: 'revapiAcceptAllBreaks'
-      options: '--justification because'
+      tasks: 'revapiAcceptAllBreaks --justification because'
   - task: Gradle@2
     displayName: 'Build org.cccs.iceberg'
     inputs:
