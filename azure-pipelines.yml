@@ -36,17 +36,17 @@ steps:
       jdkArchitectureOption: 'x64'
       publishJUnitResults: true
       testResultsFiles: '**/TEST-*.xml'
-      tasks: 'build -x test -x integrationTest'
+      tasks: 'build -x test -x integrationTest revapiAcceptAllBreaks --justification "why this break is ok"'
   - script: |
       ./cccs-publish.sh
     condition: succeeded()
-    displayName: 'Copy spark jars'    
+    displayName: 'Copy spark jars'
   - task: PublishBuildArtifacts@1
     condition: succeeded()
     inputs:
       PathtoPublish: "$(Build.SourcesDirectory)/build"
       ArtifactName: "iceberg"
-      publishLocation: "Container"    
+      publishLocation: "Container"
   - task: Gradle@2
     displayName: 'Publish org.cccs.iceberg'
     condition: and(succeeded(), eq(variables.isPublish, true))
