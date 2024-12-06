@@ -155,6 +155,7 @@ public class OAuth2Util {
 
   private static OAuthTokenResponse refreshToken(
       RESTClient client,
+      String credential,
       Map<String, String> headers,
       String subjectToken,
       String subjectTokenType,
@@ -163,6 +164,7 @@ public class OAuth2Util {
       Map<String, String> optionalOAuthParams) {
     Map<String, String> request =
         tokenExchangeRequest(
+            credential,
             subjectToken,
             subjectTokenType,
             scope != null ? ImmutableList.of(scope) : ImmutableList.of(),
@@ -183,6 +185,7 @@ public class OAuth2Util {
   public static OAuthTokenResponse exchangeToken(
       RESTClient client,
       Map<String, String> headers,
+      String credential,
       String subjectToken,
       String subjectTokenType,
       String actorToken,
@@ -192,6 +195,7 @@ public class OAuth2Util {
       Map<String, String> optionalParams) {
     Map<String, String> request =
         tokenExchangeRequest(
+            credential,
             subjectToken,
             subjectTokenType,
             actorToken,
@@ -214,6 +218,7 @@ public class OAuth2Util {
   public static OAuthTokenResponse exchangeToken(
       RESTClient client,
       Map<String, String> headers,
+      String credential,
       String subjectToken,
       String subjectTokenType,
       String actorToken,
@@ -222,6 +227,7 @@ public class OAuth2Util {
     return exchangeToken(
         client,
         headers,
+        credential,
         subjectToken,
         subjectTokenType,
         actorToken,
@@ -234,6 +240,7 @@ public class OAuth2Util {
   public static OAuthTokenResponse exchangeToken(
       RESTClient client,
       Map<String, String> headers,
+      String credential,
       String subjectToken,
       String subjectTokenType,
       String actorToken,
@@ -242,6 +249,7 @@ public class OAuth2Util {
       String oauth2ServerUri) {
     return exchangeToken(
         client,
+        credential,
         headers,
         subjectToken,
         subjectTokenType,
@@ -295,15 +303,17 @@ public class OAuth2Util {
   }
 
   private static Map<String, String> tokenExchangeRequest(
+      String credential,
       String subjectToken,
       String subjectTokenType,
       List<String> scopes,
       Map<String, String> optionalOAuthParams) {
     return tokenExchangeRequest(
-        subjectToken, subjectTokenType, null, null, scopes, optionalOAuthParams);
+        credential, subjectToken, subjectTokenType, null, null, scopes, optionalOAuthParams);
   }
 
   private static Map<String, String> tokenExchangeRequest(
+      String credential,
       String subjectToken,
       String subjectTokenType,
       String actorToken,
@@ -320,6 +330,11 @@ public class OAuth2Util {
     ImmutableMap.Builder<String, String> formData = ImmutableMap.builder();
     formData.put(GRANT_TYPE, TOKEN_EXCHANGE);
     // CCCS EDIT
+    if (credential != null) {
+      Pair<String, String> credentialPair = parseCredential(credential);
+      formData.put(CLIENT_ID, credentialPair.first());
+      formData.put(CLIENT_SECRET, credentialPair.second());
+    }
     formData.put(ASSERTION, subjectToken);
     formData.put(REQUESTED_TOKEN_USE, ON_BEHALF_OF);
     // END CCCS EDIT
@@ -418,7 +433,8 @@ public class OAuth2Util {
             .withIssuedTokenType(JsonUtil.getStringOrNull(ISSUED_TOKEN_TYPE, json));
 
     if (json.has(EXPIRES_IN)) {
-      builder.setExpirationInSeconds(JsonUtil.getInt(EXPIRES_IN, json));
+      // Temporarily setting token expiry to 300 for testing purposes
+      builder.setExpirationInSeconds(300);
     }
 
     if (json.has(SCOPE)) {
@@ -584,6 +600,7 @@ public class OAuth2Util {
         // attempt a normal refresh
         return refreshToken(
             client,
+            credential(),
             headers(),
             token(),
             tokenType(),
@@ -599,6 +616,7 @@ public class OAuth2Util {
             RESTUtil.merge(headers(), basicAuthHeaders(credential()));
         return refreshToken(
             client,
+            credential(),
             basicHeaders,
             token(),
             tokenType(),
@@ -767,6 +785,7 @@ public class OAuth2Util {
           exchangeToken(
               client,
               parent.headers(),
+              parent.credential(),
               token,
               tokenType,
               parent.token(),
