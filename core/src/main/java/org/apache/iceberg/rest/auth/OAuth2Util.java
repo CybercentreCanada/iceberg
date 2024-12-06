@@ -155,7 +155,7 @@ public class OAuth2Util {
 
   private static OAuthTokenResponse refreshToken(
       RESTClient client,
-      String credential,
+      Pair<String, String> credential,
       Map<String, String> headers,
       String subjectToken,
       String subjectTokenType,
@@ -185,7 +185,7 @@ public class OAuth2Util {
   public static OAuthTokenResponse exchangeToken(
       RESTClient client,
       Map<String, String> headers,
-      String credential,
+      Pair<String, String> credential,
       String subjectToken,
       String subjectTokenType,
       String actorToken,
@@ -218,7 +218,7 @@ public class OAuth2Util {
   public static OAuthTokenResponse exchangeToken(
       RESTClient client,
       Map<String, String> headers,
-      String credential,
+      Pair<String, String> credential,
       String subjectToken,
       String subjectTokenType,
       String actorToken,
@@ -240,7 +240,7 @@ public class OAuth2Util {
   public static OAuthTokenResponse exchangeToken(
       RESTClient client,
       Map<String, String> headers,
-      String credential,
+      Pair<String, String> credential,
       String subjectToken,
       String subjectTokenType,
       String actorToken,
@@ -303,7 +303,7 @@ public class OAuth2Util {
   }
 
   private static Map<String, String> tokenExchangeRequest(
-      String credential,
+      Pair<String, String> credential,
       String subjectToken,
       String subjectTokenType,
       List<String> scopes,
@@ -313,7 +313,7 @@ public class OAuth2Util {
   }
 
   private static Map<String, String> tokenExchangeRequest(
-      String credential,
+      Pair<String, String> credential,
       String subjectToken,
       String subjectTokenType,
       String actorToken,
@@ -331,9 +331,8 @@ public class OAuth2Util {
     formData.put(GRANT_TYPE, TOKEN_EXCHANGE);
     // CCCS EDIT
     if (credential != null) {
-      Pair<String, String> credentialPair = parseCredential(credential);
-      formData.put(CLIENT_ID, credentialPair.first());
-      formData.put(CLIENT_SECRET, credentialPair.second());
+      formData.put(CLIENT_ID, credential.first());
+      formData.put(CLIENT_SECRET, credential.second());
     }
     formData.put(ASSERTION, subjectToken);
     formData.put(REQUESTED_TOKEN_USE, ON_BEHALF_OF);
