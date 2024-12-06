@@ -249,8 +249,8 @@ public class OAuth2Util {
       String oauth2ServerUri) {
     return exchangeToken(
         client,
-        credential,
         headers,
+        credential,
         subjectToken,
         subjectTokenType,
         actorToken,
