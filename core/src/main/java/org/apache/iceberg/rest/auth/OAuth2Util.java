@@ -648,7 +648,7 @@ public class OAuth2Util {
       long waitIntervalMillis = expiresInMillis - refreshWindowMillis;
       // how much time to actually wait
       // temp debugging change to trigger faster refreshes
-      long timeToWait = 300000;
+      long timeToWait = Math.min(Math.max(waitIntervalMillis, MIN_REFRESH_WAIT_MILLIS), 300000);
 
       executor.schedule(
           () -> {
