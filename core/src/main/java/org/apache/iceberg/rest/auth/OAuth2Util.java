@@ -684,6 +684,7 @@ public class OAuth2Util {
       long startTimeMillis = System.currentTimeMillis();
       Long expiresAtMillis = session.expiresAtMillis();
 
+      LOG.warn("expiresAtMillis: {}, startTimeMillis: {}", expiresAtMillis, startTimeMillis);
       if (null != expiresAtMillis && expiresAtMillis <= startTimeMillis) {
         Pair<Integer, TimeUnit> expiration = session.refresh(client);
         // if expiration is non-null, then token refresh was successful
