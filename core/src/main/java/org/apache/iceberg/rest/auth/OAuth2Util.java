@@ -433,8 +433,7 @@ public class OAuth2Util {
             .withIssuedTokenType(JsonUtil.getStringOrNull(ISSUED_TOKEN_TYPE, json));
 
     if (json.has(EXPIRES_IN)) {
-      // Temporarily setting token expiry to 300 for testing purposes
-      builder.setExpirationInSeconds(300);
+      builder.setExpirationInSeconds(JsonUtil.getInt(EXPIRES_IN, json));
     }
 
     if (json.has(SCOPE)) {
@@ -648,7 +647,8 @@ public class OAuth2Util {
       // how much time to wait before expiration
       long waitIntervalMillis = expiresInMillis - refreshWindowMillis;
       // how much time to actually wait
-      long timeToWait = Math.max(waitIntervalMillis, MIN_REFRESH_WAIT_MILLIS);
+      // temp debugging change to trigger faster refreshes
+      long timeToWait = 300000;
 
       executor.schedule(
           () -> {
