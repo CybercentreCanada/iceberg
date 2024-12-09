@@ -44,7 +44,7 @@ public class OAuth2Properties {
    */
   public static final String TOKEN_REFRESH_ENABLED = "token-refresh-enabled";
 
-  public static final boolean TOKEN_REFRESH_ENABLED_DEFAULT = true;
+  public static final boolean TOKEN_REFRESH_ENABLED_DEFAULT = false;
 
   /** Additional scope for OAuth2. */
   public static final String SCOPE = "scope";
