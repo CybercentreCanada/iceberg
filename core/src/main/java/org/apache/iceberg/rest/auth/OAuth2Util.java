@@ -765,7 +765,7 @@ public class OAuth2Util {
 
       Long expiresAtMillis = session.expiresAtMillis();
       Exception exception = new Exception("Current stack trace:");
-      LOG.warn("exception: {}", exception);
+      LOG.warn("exception", exception);
       LOG.warn("expiresAtMillis: {}", expiresAtMillis);
       if (null == expiresAtMillis && response.expiresInSeconds() != null) {
         expiresAtMillis = startTimeMillis + TimeUnit.SECONDS.toMillis(response.expiresInSeconds());
