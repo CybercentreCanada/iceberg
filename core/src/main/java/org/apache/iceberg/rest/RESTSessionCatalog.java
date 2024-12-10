@@ -339,7 +339,8 @@ public class RESTSessionCatalog extends BaseViewSessionCatalog
   private AuthSession session(SessionContext context) {
     LOG.warn("Getting session from SessionContext");
     LOG.warn("sessions: {}", sessions);
-    LOG.warn("context: {}", context);
+    LOG.warn("context {}", context);
+    LOG.warn("context.sessionId: {}", context.sessionId);
     AuthSession session =
         sessions.get(
             context.sessionId(),
@@ -349,7 +350,10 @@ public class RESTSessionCatalog extends BaseViewSessionCatalog
                   newSession(context.credentials(), context.properties(), catalogAuth);
               LOG.warn("after creating newSession");
               if (null != newSession) {
-                return newSession.second().get();
+                sess = newSession.second().get();
+                LOG.warn("newSession headers: {}", sess.headers);
+                LOG.warn("newSession token: {}", sess.config.token());
+                return sess;
               }
 
               return null;
@@ -360,6 +364,7 @@ public class RESTSessionCatalog extends BaseViewSessionCatalog
   }
 
   private Supplier<Map<String, String>> headers(SessionContext context) {
+    LOG.warn("headers: {}", session(context::headers));
     return session(context)::headers;
   }
 
