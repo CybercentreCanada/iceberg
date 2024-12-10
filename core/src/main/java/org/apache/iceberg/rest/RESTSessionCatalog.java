@@ -350,7 +350,7 @@ public class RESTSessionCatalog extends BaseViewSessionCatalog
                   newSession(context.credentials(), context.properties(), catalogAuth);
               LOG.warn("after creating newSession");
               if (null != newSession) {
-                sess = newSession.second().get();
+                AuthSession sess = newSession.second().get();
                 LOG.warn("newSession headers: {}", sess.headers);
                 LOG.warn("newSession token: {}", sess.config.token());
                 return sess;
