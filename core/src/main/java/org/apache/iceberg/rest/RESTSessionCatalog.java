@@ -359,12 +359,12 @@ public class RESTSessionCatalog extends BaseViewSessionCatalog
               return null;
             });
     LOG.warn("session: {}", session);
+    LOG.warn("headers: {}", session.headers());
 
     return session != null ? session : catalogAuth;
   }
 
   private Supplier<Map<String, String>> headers(SessionContext context) {
-    LOG.warn("headers: {}", session(context)::headers.get());
     return session(context)::headers;
   }
 
