@@ -768,7 +768,7 @@ public class OAuth2Util {
       if (null == expiresAtMillis && response.expiresInSeconds() != null) {
         expiresAtMillis = startTimeMillis + TimeUnit.SECONDS.toMillis(response.expiresInSeconds());
         LOG.warn(
-            "expiresAtMillis:·{},·startTimeMillis:·{},·response.expiresInSeconds:·{}",
+            "expiresAtMillis: {}, startTimeMillis: {}, response.expiresInSeconds: {}",
             expiresAtMillis,
             startTimeMillis,
             TimeUnit.SECONDS.toMillis(response.expiresInSeconds()));

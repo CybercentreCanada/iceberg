@@ -293,14 +293,17 @@ public class RESTSessionCatalog extends BaseViewSessionCatalog
                 .oauth2ServerUri(oauth2ServerUri)
                 .optionalOAuthParams(optionalOAuthParams)
                 .build());
+    LOG.warn("New auth session created {}", this.catalogAuth);
     if (authResponse != null) {
       this.catalogAuth =
           AuthSession.fromTokenResponse(
               client, tokenRefreshExecutor(name), authResponse, startTimeMillis, catalogAuth);
+      LOG.warn("Auth session from authResponse {}", this.catalogAuth);
     } else if (token != null) {
       this.catalogAuth =
           AuthSession.fromAccessToken(
               client, tokenRefreshExecutor(name), token, expiresAtMillis(mergedProps), catalogAuth);
+      LOG.warn("Auth session from token {}", this.catalogAuth);
     }
 
     this.pageSize = PropertyUtil.propertyAsNullableInt(mergedProps, REST_PAGE_SIZE);
@@ -332,6 +335,7 @@ public class RESTSessionCatalog extends BaseViewSessionCatalog
   }
 
   private AuthSession session(SessionContext context) {
+    LOG.warn("Getting session from SessionContext");
     AuthSession session =
         sessions.get(
             context.sessionId(),
@@ -344,6 +348,7 @@ public class RESTSessionCatalog extends BaseViewSessionCatalog
 
               return null;
             });
+    LOG.warn("session: {}", session);
 
     return session != null ? session : catalogAuth;
   }
