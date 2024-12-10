@@ -764,8 +764,10 @@ public class OAuth2Util {
                   .build());
 
       Long expiresAtMillis = session.expiresAtMillis();
+      LOG.warn("expiresAtMillis: {}", expiresAtMillis);
       if (null == expiresAtMillis && response.expiresInSeconds() != null) {
         expiresAtMillis = startTimeMillis + TimeUnit.SECONDS.toMillis(response.expiresInSeconds());
+        LOG.warn("expiresAtMillis: {}, startTimeMillis: {}, response.expiresInSeconds: {}", expiresAtMillis, startTimeMillis, TimeUnit.SECONDS.toMillis(response.expiresInSeconds());
       }
 
       if (null != executor && null != expiresAtMillis) {
