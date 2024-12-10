@@ -364,7 +364,7 @@ public class RESTSessionCatalog extends BaseViewSessionCatalog
   }
 
   private Supplier<Map<String, String>> headers(SessionContext context) {
-    LOG.warn("headers: {}", session(context)::headers);
+    LOG.warn("headers: {}", session(context)::headers.get());
     return session(context)::headers;
   }
 
