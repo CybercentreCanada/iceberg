@@ -239,6 +239,7 @@ public class RESTSessionCatalog extends BaseViewSessionCatalog
     }
     String oauth2ServerUri =
         props.getOrDefault(OAuth2Properties.OAUTH2_SERVER_URI, ResourcePaths.tokens());
+    LOG.warn("oauth2ServerUri: {}", oauth2ServerUri);
     try (RESTClient initClient = clientBuilder.apply(props)) {
       Map<String, String> initHeaders =
           RESTUtil.merge(configHeaders(props), OAuth2Util.authHeaders(initToken));
@@ -246,6 +247,7 @@ public class RESTSessionCatalog extends BaseViewSessionCatalog
         authResponse =
             OAuth2Util.fetchToken(
                 initClient, initHeaders, credential, scope, oauth2ServerUri, optionalOAuthParams);
+        LOG.warn("authResponse when hasCredential: {}", authResponse);
         Map<String, String> authHeaders =
             RESTUtil.merge(initHeaders, OAuth2Util.authHeaders(authResponse.token()));
         config = fetchConfig(initClient, authHeaders, props);
