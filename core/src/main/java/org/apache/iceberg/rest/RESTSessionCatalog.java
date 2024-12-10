@@ -338,12 +338,16 @@ public class RESTSessionCatalog extends BaseViewSessionCatalog
 
   private AuthSession session(SessionContext context) {
     LOG.warn("Getting session from SessionContext");
+    LOG.warn("sessions: {}", sessions);
+    LOG.warn("context: {}", context);
     AuthSession session =
         sessions.get(
             context.sessionId(),
             id -> {
+              LOG.warn("before creating newSession");
               Pair<String, Supplier<AuthSession>> newSession =
                   newSession(context.credentials(), context.properties(), catalogAuth);
+              LOG.warn("after creating newSession");
               if (null != newSession) {
                 return newSession.second().get();
               }
