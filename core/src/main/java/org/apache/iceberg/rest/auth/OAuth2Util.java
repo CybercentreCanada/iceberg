@@ -568,20 +568,25 @@ public class OAuth2Util {
     }
 
     private OAuthTokenResponse refreshCurrentToken(RESTClient client) {
-      if (null != expiresAtMillis() && expiresAtMillis() <= System.currentTimeMillis()) {
-        // the token has already expired, attempt to refresh using the credential
-        return refreshExpiredToken(client);
-      } else {
-        // attempt a normal refresh
-        return refreshToken(
-            client,
-            headers(),
-            token(),
-            tokenType(),
-            scope(),
-            oauth2ServerUri(),
-            optionalOAuthParams());
-      }
+        // CCCS EDIT
+        // Exchange flow for credentials flow tokens doesn't work with Azure,
+        // we're just supposed to fetch a brand new token with the same credentials.
+        return fetchToken(client);
+        //   if (null != expiresAtMillis() && expiresAtMillis() <= System.currentTimeMillis()) {
+        //     // the token has already expired, attempt to refresh using the credential
+        //     return refreshExpiredToken(client);
+        //   } else {
+        //     // attempt a normal refresh
+        //     return refreshToken(
+        //         client,
+        //         headers(),
+        //         token(),
+        //         tokenType(),
+        //         scope(),
+        //         oauth2ServerUri(),
+        //         optionalOAuthParams());
+        //   }
+        // END CCCS EDIT
     }
 
     private OAuthTokenResponse refreshExpiredToken(RESTClient client) {
