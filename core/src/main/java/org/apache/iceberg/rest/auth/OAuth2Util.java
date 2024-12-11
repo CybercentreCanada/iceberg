@@ -575,7 +575,7 @@ public class OAuth2Util {
           return fetchToken(
               client,
               headers(),
-              credential()
+              credential(),
               scope(),
               oauth2ServerUri(),
               optionalOAuthParams());
