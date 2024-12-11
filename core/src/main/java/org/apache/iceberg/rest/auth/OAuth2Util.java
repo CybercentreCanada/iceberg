@@ -575,7 +575,6 @@ public class OAuth2Util {
         // attempt a normal refresh
         return refreshToken(
             client,
-            credential(),
             headers(),
             token(),
             tokenType(),
