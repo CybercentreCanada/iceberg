@@ -572,7 +572,8 @@ public class OAuth2Util {
       // Exchange flow for credentials flow tokens doesn't work with Azure,
       // we're just supposed to fetch a brand new token with the same credentials.
       if (credential() != null) {
-        return fetchToken(client, headers(), credential(), scope(), oauth2ServerUri(), optionalOAuthParams());
+        return fetchToken(
+            client, headers(), credential(), scope(), oauth2ServerUri(), optionalOAuthParams());
       }
       // END CCCS EDIT
 
