@@ -239,7 +239,6 @@ public class RESTSessionCatalog extends BaseViewSessionCatalog
     }
     String oauth2ServerUri =
         props.getOrDefault(OAuth2Properties.OAUTH2_SERVER_URI, ResourcePaths.tokens());
-    LOG.warn("oauth2ServerUri: {}", oauth2ServerUri);
     try (RESTClient initClient = clientBuilder.apply(props)) {
       Map<String, String> initHeaders =
           RESTUtil.merge(configHeaders(props), OAuth2Util.authHeaders(initToken));
@@ -305,7 +304,6 @@ public class RESTSessionCatalog extends BaseViewSessionCatalog
       this.catalogAuth =
           AuthSession.fromAccessToken(
               client, tokenRefreshExecutor(name), token, expiresAtMillis(mergedProps), catalogAuth);
-      LOG.warn("Auth session from token {}", this.catalogAuth);
     }
 
     this.pageSize = PropertyUtil.propertyAsNullableInt(mergedProps, REST_PAGE_SIZE);
@@ -337,29 +335,19 @@ public class RESTSessionCatalog extends BaseViewSessionCatalog
   }
 
   private AuthSession session(SessionContext context) {
-    LOG.warn("Getting session from SessionContext");
-    LOG.warn("sessions: {}", sessions);
-    LOG.warn("context {}", context);
-    LOG.warn("context.sessionId: {}", context.sessionId());
+    LOG.warn("Getting session from SessionContext with context.sessionId: {}", context.sessionId());
     AuthSession session =
         sessions.get(
             context.sessionId(),
             id -> {
-              LOG.warn("before creating newSession");
               Pair<String, Supplier<AuthSession>> newSession =
                   newSession(context.credentials(), context.properties(), catalogAuth);
-              LOG.warn("after creating newSession");
               if (null != newSession) {
-                AuthSession sess = newSession.second().get();
-                LOG.warn("newSession headers: {}", sess.headers());
-                LOG.warn("newSession token: {}", sess.config().token());
-                return sess;
+                return newSession.second().get();
               }
 
               return null;
             });
-    LOG.warn("session: {}", session);
-    LOG.warn("headers: {}", session.headers());
 
     return session != null ? session : catalogAuth;
   }

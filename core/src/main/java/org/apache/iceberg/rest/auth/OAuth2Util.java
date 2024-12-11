@@ -70,12 +70,7 @@ public class OAuth2Util {
   private static final Splitter CREDENTIAL_SPLITTER = Splitter.on(":").limit(2).trimResults();
   private static final String GRANT_TYPE = "grant_type";
   private static final String CLIENT_CREDENTIALS = "client_credentials";
-  // CCCS EDIT
-  private static final String TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:jwt-bearer";
-  private static final String ASSERTION = "assertion";
-  private static final String REQUESTED_TOKEN_USE = "requested_token_use";
-  private static final String ON_BEHALF_OF = "on_behalf_of";
-  // END CCCS EDIT
+  private static final String TOKEN_EXCHANGE = "urn:ietf:params:oauth:grant-type:token-exchange";
   private static final String SCOPE = "scope";
 
   // Client credentials flow
@@ -155,7 +150,6 @@ public class OAuth2Util {
 
   private static OAuthTokenResponse refreshToken(
       RESTClient client,
-      String credential,
       Map<String, String> headers,
       String subjectToken,
       String subjectTokenType,
@@ -164,7 +158,6 @@ public class OAuth2Util {
       Map<String, String> optionalOAuthParams) {
     Map<String, String> request =
         tokenExchangeRequest(
-            credential,
             subjectToken,
             subjectTokenType,
             scope != null ? ImmutableList.of(scope) : ImmutableList.of(),
@@ -185,7 +178,6 @@ public class OAuth2Util {
   public static OAuthTokenResponse exchangeToken(
       RESTClient client,
       Map<String, String> headers,
-      String credential,
       String subjectToken,
       String subjectTokenType,
       String actorToken,
@@ -195,7 +187,6 @@ public class OAuth2Util {
       Map<String, String> optionalParams) {
     Map<String, String> request =
         tokenExchangeRequest(
-            credential,
             subjectToken,
             subjectTokenType,
             actorToken,
@@ -218,7 +209,6 @@ public class OAuth2Util {
   public static OAuthTokenResponse exchangeToken(
       RESTClient client,
       Map<String, String> headers,
-      String credential,
       String subjectToken,
       String subjectTokenType,
       String actorToken,
@@ -227,7 +217,6 @@ public class OAuth2Util {
     return exchangeToken(
         client,
         headers,
-        credential,
         subjectToken,
         subjectTokenType,
         actorToken,
@@ -240,7 +229,6 @@ public class OAuth2Util {
   public static OAuthTokenResponse exchangeToken(
       RESTClient client,
       Map<String, String> headers,
-      String credential,
       String subjectToken,
       String subjectTokenType,
       String actorToken,
@@ -250,7 +238,6 @@ public class OAuth2Util {
     return exchangeToken(
         client,
         headers,
-        credential,
         subjectToken,
         subjectTokenType,
         actorToken,
@@ -303,17 +290,15 @@ public class OAuth2Util {
   }
 
   private static Map<String, String> tokenExchangeRequest(
-      String credential,
       String subjectToken,
       String subjectTokenType,
       List<String> scopes,
       Map<String, String> optionalOAuthParams) {
     return tokenExchangeRequest(
-        credential, subjectToken, subjectTokenType, null, null, scopes, optionalOAuthParams);
+        subjectToken, subjectTokenType, null, null, scopes, optionalOAuthParams);
   }
 
   private static Map<String, String> tokenExchangeRequest(
-      String credential,
       String subjectToken,
       String subjectTokenType,
       String actorToken,
@@ -329,15 +314,6 @@ public class OAuth2Util {
 
     ImmutableMap.Builder<String, String> formData = ImmutableMap.builder();
     formData.put(GRANT_TYPE, TOKEN_EXCHANGE);
-    // CCCS EDIT
-    if (credential != null) {
-      Pair<String, String> credentialPair = parseCredential(credential);
-      formData.put(CLIENT_ID, credentialPair.first());
-      formData.put(CLIENT_SECRET, credentialPair.second());
-    }
-    formData.put(ASSERTION, subjectToken);
-    formData.put(REQUESTED_TOKEN_USE, ON_BEHALF_OF);
-    // END CCCS EDIT
     formData.put(SCOPE, toScope(scopes));
     formData.put(SUBJECT_TOKEN, subjectToken);
     formData.put(SUBJECT_TOKEN_TYPE, subjectTokenType);
@@ -615,7 +591,6 @@ public class OAuth2Util {
             RESTUtil.merge(headers(), basicAuthHeaders(credential()));
         return refreshToken(
             client,
-            credential(),
             basicHeaders,
             token(),
             tokenType(),
@@ -684,7 +659,6 @@ public class OAuth2Util {
       long startTimeMillis = System.currentTimeMillis();
       Long expiresAtMillis = session.expiresAtMillis();
 
-      LOG.warn("expiresAtMillis: {}, startTimeMillis: {}", expiresAtMillis, startTimeMillis);
       if (null != expiresAtMillis && expiresAtMillis <= startTimeMillis) {
         Pair<Integer, TimeUnit> expiration = session.refresh(client);
         // if expiration is non-null, then token refresh was successful
@@ -765,15 +739,9 @@ public class OAuth2Util {
 
       Long expiresAtMillis = session.expiresAtMillis();
       Exception exception = new Exception("Current stack trace:");
-      LOG.warn("exception", exception);
-      LOG.warn("expiresAtMillis: {}", expiresAtMillis);
+      LOG.warn("", exception);
       if (null == expiresAtMillis && response.expiresInSeconds() != null) {
         expiresAtMillis = startTimeMillis + TimeUnit.SECONDS.toMillis(response.expiresInSeconds());
-        LOG.warn(
-            "expiresAtMillis: {}, startTimeMillis: {}, response.expiresInSeconds: {}",
-            expiresAtMillis,
-            startTimeMillis,
-            TimeUnit.SECONDS.toMillis(response.expiresInSeconds()));
       }
 
       if (null != executor && null != expiresAtMillis) {
@@ -794,7 +762,6 @@ public class OAuth2Util {
           exchangeToken(
               client,
               parent.headers(),
-              parent.credential(),
               token,
               tokenType,
               parent.token(),
