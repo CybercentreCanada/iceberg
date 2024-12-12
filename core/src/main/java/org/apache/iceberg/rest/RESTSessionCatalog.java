@@ -246,7 +246,6 @@ public class RESTSessionCatalog extends BaseViewSessionCatalog
         authResponse =
             OAuth2Util.fetchToken(
                 initClient, initHeaders, credential, scope, oauth2ServerUri, optionalOAuthParams);
-        LOG.warn("authResponse when hasCredential: {}", authResponse);
         Map<String, String> authHeaders =
             RESTUtil.merge(initHeaders, OAuth2Util.authHeaders(authResponse.token()));
         config = fetchConfig(initClient, authHeaders, props);
@@ -294,12 +293,10 @@ public class RESTSessionCatalog extends BaseViewSessionCatalog
                 .oauth2ServerUri(oauth2ServerUri)
                 .optionalOAuthParams(optionalOAuthParams)
                 .build());
-    LOG.warn("New auth session created {}", this.catalogAuth);
     if (authResponse != null) {
       this.catalogAuth =
           AuthSession.fromTokenResponse(
               client, tokenRefreshExecutor(name), authResponse, startTimeMillis, catalogAuth);
-      LOG.warn("Auth session from authResponse {}", this.catalogAuth);
     } else if (token != null) {
       this.catalogAuth =
           AuthSession.fromAccessToken(
@@ -335,7 +332,6 @@ public class RESTSessionCatalog extends BaseViewSessionCatalog
   }
 
   private AuthSession session(SessionContext context) {
-    LOG.warn("Getting session from SessionContext with context.sessionId: {}", context.sessionId());
     AuthSession session =
         sessions.get(
             context.sessionId(),

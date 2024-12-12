@@ -630,8 +630,7 @@ public class OAuth2Util {
       // how much time to wait before expiration
       long waitIntervalMillis = expiresInMillis - refreshWindowMillis;
       // how much time to actually wait
-      // temp debugging change to trigger faster refreshes
-      long timeToWait = Math.min(Math.max(waitIntervalMillis, MIN_REFRESH_WAIT_MILLIS), 300000);
+      long timeToWait = Math.max(waitIntervalMillis, MIN_REFRESH_WAIT_MILLIS);
 
       executor.schedule(
           () -> {
@@ -746,8 +745,6 @@ public class OAuth2Util {
                   .build());
 
       Long expiresAtMillis = session.expiresAtMillis();
-      Exception exception = new Exception("Current stack trace:");
-      LOG.warn("", exception);
       if (null == expiresAtMillis && response.expiresInSeconds() != null) {
         expiresAtMillis = startTimeMillis + TimeUnit.SECONDS.toMillis(response.expiresInSeconds());
       }
