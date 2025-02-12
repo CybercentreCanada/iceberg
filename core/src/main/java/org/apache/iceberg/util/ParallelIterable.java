@@ -35,6 +35,7 @@ import java.util.function.Supplier;
 import org.apache.iceberg.io.CloseableGroup;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.io.CloseableIterator;
+import org.apache.iceberg.relocated.com.google.common.annotations.VisibleForTesting;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.Iterables;
 import org.apache.iceberg.relocated.com.google.common.io.Closer;
@@ -77,17 +78,18 @@ public class ParallelIterable<T> extends CloseableGroup implements CloseableIter
     return iter;
   }
 
-  private static class ParallelIterator<T> implements CloseableIterator<T> {
+  @VisibleForTesting
+  static class ParallelIterator<T> implements CloseableIterator<T> {
     private final Iterator<Task<T>> tasks;
     private final Deque<Task<T>> yieldedTasks = new ArrayDeque<>();
     private final ExecutorService workerPool;
     private final CompletableFuture<Optional<Task<T>>>[] taskFutures;
     private final ConcurrentLinkedQueue<T> queue = new ConcurrentLinkedQueue<>();
-    private final int maxQueueSize;
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
     private ParallelIterator(
         Iterable<? extends Iterable<T>> iterables, ExecutorService workerPool, int maxQueueSize) {
+      Preconditions.checkArgument(maxQueueSize > 0, "Max queue size must be greater than 0");
       this.tasks =
           Iterables.transform(
                   iterables, iterable -> new Task<>(iterable, queue, closed, maxQueueSize))
@@ -99,6 +101,7 @@ public class ParallelIterable<T> extends CloseableGroup implements CloseableIter
     }
 
     @Override
+    @SuppressWarnings("FutureReturnValueIgnored")
     public void close() {
       // close first, avoid new task submit
       this.closed.set(true);
@@ -225,6 +228,85 @@ public class ParallelIterable<T> extends CloseableGroup implements CloseableIter
         throw new NoSuchElementException();
       }
       return queue.poll();
+    }
+
+    @VisibleForTesting
+    int queueSize() {
+      return queue.size();
+    }
+  }
+
+  private static class Task<T> implements Supplier<Optional<Task<T>>>, Closeable {
+    private final Iterable<T> input;
+    private final ConcurrentLinkedQueue<T> queue;
+    private final AtomicBoolean closed;
+    private final int approximateMaxQueueSize;
+
+    private Iterator<T> iterator = null;
+
+    Task(
+        Iterable<T> input,
+        ConcurrentLinkedQueue<T> queue,
+        AtomicBoolean closed,
+        int approximateMaxQueueSize) {
+      this.input = Preconditions.checkNotNull(input, "input cannot be null");
+      this.queue = Preconditions.checkNotNull(queue, "queue cannot be null");
+      this.closed = Preconditions.checkNotNull(closed, "closed cannot be null");
+      this.approximateMaxQueueSize = approximateMaxQueueSize;
+    }
+
+    @Override
+    public Optional<Task<T>> get() {
+      try {
+        if (iterator == null) {
+          iterator = input.iterator();
+        }
+
+        while (iterator.hasNext()) {
+          if (queue.size() >= approximateMaxQueueSize) {
+            // Yield when queue is over the size limit. Task will be resubmitted later and continue
+            // the work.
+            return Optional.of(this);
+          }
+
+          T next = iterator.next();
+          if (closed.get()) {
+            break;
+          }
+
+          queue.add(next);
+        }
+      } catch (Throwable e) {
+        try {
+          close();
+        } catch (IOException closeException) {
+          // self-suppression is not permitted
+          // (e and closeException to be the same is unlikely, but possible)
+          if (closeException != e) {
+            e.addSuppressed(closeException);
+          }
+        }
+
+        throw e;
+      }
+
+      try {
+        close();
+      } catch (IOException e) {
+        throw new UncheckedIOException("Close failed", e);
+      }
+
+      // The task is complete. Returning empty means there is no continuation that should be
+      // executed.
+      return Optional.empty();
+    }
+
+    @Override
+    public void close() throws IOException {
+      iterator = null;
+      if (input instanceof Closeable) {
+        ((Closeable) input).close();
+      }
     }
   }
 

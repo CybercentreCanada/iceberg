@@ -18,6 +18,8 @@
  */
 package org.apache.iceberg.aliyun.oss.mock;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import com.aliyun.oss.OSSErrorCode;
 import com.aliyun.oss.model.Bucket;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -44,11 +46,7 @@ import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.io.ByteStreams;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.MediaType;
-import org.springframework.stereotype.Component;
 
-@Component
 public class AliyunOSSMockLocalStore {
   private static final Logger LOG = LoggerFactory.getLogger(AliyunOSSMockLocalStore.class);
 
@@ -59,8 +57,7 @@ public class AliyunOSSMockLocalStore {
 
   private final ObjectMapper objectMapper = new ObjectMapper();
 
-  public AliyunOSSMockLocalStore(
-      @Value("${" + AliyunOSSMockApp.PROP_ROOT_DIR + ":}") String rootDir) {
+  public AliyunOSSMockLocalStore(String rootDir) {
     Preconditions.checkNotNull(rootDir, "Root directory cannot be null");
     this.root = new File(rootDir);
 
@@ -119,8 +116,7 @@ public class AliyunOSSMockLocalStore {
 
     File dir = new File(root, bucket.getName());
     if (Files.walk(dir.toPath()).anyMatch(p -> p.toFile().isFile())) {
-      throw new AliyunOSSMockLocalController.OssException(
-          409, OSSErrorCode.BUCKET_NOT_EMPTY, "The bucket you tried to delete is not empty. ");
+      throw new RuntimeException(OSSErrorCode.BUCKET_NOT_EMPTY);
     }
 
     try (Stream<Path> walk = Files.walk(dir.toPath())) {
@@ -137,7 +133,9 @@ public class AliyunOSSMockLocalStore {
       Map<String, String> userMetaData)
       throws IOException {
     File bucketDir = new File(root, bucketName);
-    assert bucketDir.exists() || bucketDir.mkdirs();
+    assertThat(bucketDir)
+        .satisfiesAnyOf(
+            bucket -> assertThat(bucket).exists(), bucket -> assertThat(bucket.mkdirs()).isTrue());
 
     File dataFile = new File(bucketDir, fileName + DATA_FILE);
     File metaFile = new File(bucketDir, fileName + META_FILE);
@@ -152,7 +150,9 @@ public class AliyunOSSMockLocalStore {
     metadata.setContentLength(dataFile.length());
     metadata.setContentMD5(md5sum(dataFile.getAbsolutePath()));
     metadata.setContentType(
-        contentType != null ? contentType : MediaType.APPLICATION_OCTET_STREAM_VALUE);
+        contentType != null
+            ? contentType
+            : "application/octet"); // MediaType.APPLICATION_OCTET_STREAM_VALUE
     metadata.setContentEncoding(contentEncoding);
     metadata.setDataFile(dataFile.getAbsolutePath());
     metadata.setMetaFile(metaFile.getAbsolutePath());
@@ -170,17 +170,21 @@ public class AliyunOSSMockLocalStore {
 
   void deleteObject(String bucketName, String filename) {
     File bucketDir = new File(root, bucketName);
-    assert bucketDir.exists();
+    assertThat(bucketDir).exists();
 
     File dataFile = new File(bucketDir, filename + DATA_FILE);
     File metaFile = new File(bucketDir, filename + META_FILE);
-    assert !dataFile.exists() || dataFile.delete();
-    assert !metaFile.exists() || metaFile.delete();
+    assertThat(dataFile)
+        .satisfiesAnyOf(
+            file -> assertThat(file).doesNotExist(), file -> assertThat(file.delete()).isTrue());
+    assertThat(metaFile)
+        .satisfiesAnyOf(
+            file -> assertThat(file).doesNotExist(), file -> assertThat(file.delete()).isTrue());
   }
 
   ObjectMetadata getObjectMetadata(String bucketName, String filename) throws IOException {
     File bucketDir = new File(root, bucketName);
-    assert bucketDir.exists();
+    assertThat(bucketDir).exists();
 
     File dataFile = new File(bucketDir, filename + DATA_FILE);
     if (!dataFile.exists()) {

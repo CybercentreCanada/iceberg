@@ -96,7 +96,7 @@ subprojects {
 
           // CCCS modification starts
           groupId = 'cccs.ap.iceberg'
-          version = "1.6.1.0-SNAPSHOT"
+          version = "1.7.0.0-SNAPSHOT"
           // CCCS modification ends
           pom {
             name = 'Apache Iceberg'
@@ -145,13 +145,13 @@ subprojects {
           name 'cccs-stratus'
           authentication {
             basic(BasicAuthentication)
-          }          
+          }
           credentials {
             username project.findProperty('mavenUser')
             password project.findProperty('mavenPassword')
           }
         }
-      }      
+      }
       // CCCS modification: ends
     }
 

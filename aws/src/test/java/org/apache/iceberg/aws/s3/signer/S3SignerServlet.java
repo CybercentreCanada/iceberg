@@ -24,6 +24,9 @@ import static org.apache.iceberg.rest.RESTCatalogAdapter.castResponse;
 import static org.assertj.core.api.AssertionsForClassTypes.assertThat;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.time.Clock;
@@ -37,9 +40,6 @@ import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.HttpHeaders;
 import org.apache.iceberg.exceptions.RESTException;
@@ -148,7 +148,7 @@ public class S3SignerServlet extends HttpServlet {
                 .withToken("client-credentials-token:sub=" + requestMap.get("client_id"))
                 .withIssuedTokenType("urn:ietf:params:oauth:token-type:access_token")
                 .withTokenType("Bearer")
-                .setExpirationInSeconds(100)
+                .setExpirationInSeconds(10000)
                 .build());
 
       case "urn:ietf:params:oauth:grant-type:token-exchange":
@@ -163,7 +163,7 @@ public class S3SignerServlet extends HttpServlet {
                 .withToken(token)
                 .withIssuedTokenType("urn:ietf:params:oauth:token-type:access_token")
                 .withTokenType("Bearer")
-                .setExpirationInSeconds(100)
+                .setExpirationInSeconds(10000)
                 .build());
 
       default:

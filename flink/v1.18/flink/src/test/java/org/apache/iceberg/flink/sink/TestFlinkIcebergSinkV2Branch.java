@@ -31,7 +31,7 @@ import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.SnapshotRef;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.flink.HadoopCatalogExtension;
-import org.apache.iceberg.flink.MiniClusterResource;
+import org.apache.iceberg.flink.MiniFlinkClusterExtension;
 import org.apache.iceberg.flink.SimpleDataUtil;
 import org.apache.iceberg.flink.TestFixtures;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
@@ -46,12 +46,21 @@ public class TestFlinkIcebergSinkV2Branch extends TestFlinkIcebergSinkV2Base {
   private static final HadoopCatalogExtension CATALOG_EXTENSION =
       new HadoopCatalogExtension(DATABASE, TestFixtures.TABLE);
 
-  @Parameter(index = 0)
-  private String branch;
+  @Parameter(index = 4)
+  protected String branch;
 
-  @Parameters(name = "branch = {0}")
+  @Parameters(
+      name =
+          "FileFormat={0}, Parallelism={1}, Partitioned={2}, WriteDistributionMode={3}, Branch={4}")
   public static Object[][] parameters() {
-    return new Object[][] {new Object[] {"main"}, new Object[] {"testBranch"}};
+    return new Object[][] {
+      new Object[] {
+        FileFormat.AVRO, 1, false, TableProperties.WRITE_DISTRIBUTION_MODE_NONE, "main"
+      },
+      new Object[] {
+        FileFormat.AVRO, 1, false, TableProperties.WRITE_DISTRIBUTION_MODE_NONE, "testBranch"
+      }
+    };
   }
 
   @BeforeEach
@@ -71,7 +80,7 @@ public class TestFlinkIcebergSinkV2Branch extends TestFlinkIcebergSinkV2Base {
 
     env =
         StreamExecutionEnvironment.getExecutionEnvironment(
-                MiniClusterResource.DISABLE_CLASSLOADER_CHECK_CONFIG)
+                MiniFlinkClusterExtension.DISABLE_CLASSLOADER_CHECK_CONFIG)
             .enableCheckpointing(100);
 
     tableLoader = CATALOG_EXTENSION.tableLoader();
