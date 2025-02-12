@@ -95,7 +95,6 @@ public class ParallelIterable<T> extends CloseableGroup implements CloseableIter
                   iterables, iterable -> new Task<>(iterable, queue, closed, maxQueueSize))
               .iterator();
       this.workerPool = workerPool;
-      this.maxQueueSize = maxQueueSize;
       // submit 2 tasks per worker at a time
       this.taskFutures = new CompletableFuture[2 * ThreadPools.WORKER_THREAD_POOL_SIZE];
     }
@@ -233,80 +232,6 @@ public class ParallelIterable<T> extends CloseableGroup implements CloseableIter
     @VisibleForTesting
     int queueSize() {
       return queue.size();
-    }
-  }
-
-  private static class Task<T> implements Supplier<Optional<Task<T>>>, Closeable {
-    private final Iterable<T> input;
-    private final ConcurrentLinkedQueue<T> queue;
-    private final AtomicBoolean closed;
-    private final int approximateMaxQueueSize;
-
-    private Iterator<T> iterator = null;
-
-    Task(
-        Iterable<T> input,
-        ConcurrentLinkedQueue<T> queue,
-        AtomicBoolean closed,
-        int approximateMaxQueueSize) {
-      this.input = Preconditions.checkNotNull(input, "input cannot be null");
-      this.queue = Preconditions.checkNotNull(queue, "queue cannot be null");
-      this.closed = Preconditions.checkNotNull(closed, "closed cannot be null");
-      this.approximateMaxQueueSize = approximateMaxQueueSize;
-    }
-
-    @Override
-    public Optional<Task<T>> get() {
-      try {
-        if (iterator == null) {
-          iterator = input.iterator();
-        }
-
-        while (iterator.hasNext()) {
-          if (queue.size() >= approximateMaxQueueSize) {
-            // Yield when queue is over the size limit. Task will be resubmitted later and continue
-            // the work.
-            return Optional.of(this);
-          }
-
-          T next = iterator.next();
-          if (closed.get()) {
-            break;
-          }
-
-          queue.add(next);
-        }
-      } catch (Throwable e) {
-        try {
-          close();
-        } catch (IOException closeException) {
-          // self-suppression is not permitted
-          // (e and closeException to be the same is unlikely, but possible)
-          if (closeException != e) {
-            e.addSuppressed(closeException);
-          }
-        }
-
-        throw e;
-      }
-
-      try {
-        close();
-      } catch (IOException e) {
-        throw new UncheckedIOException("Close failed", e);
-      }
-
-      // The task is complete. Returning empty means there is no continuation that should be
-      // executed.
-      return Optional.empty();
-    }
-
-    @Override
-    public void close() throws IOException {
-      iterator = null;
-      if (input instanceof Closeable) {
-        ((Closeable) input).close();
-      }
     }
   }
 
