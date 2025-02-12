@@ -22,7 +22,7 @@ pool:
 variables:
   - group: MAVEN_PUBLISH_ARGS
   - name: isPublish
-    value: $[eq(variables['Build.SourceBranch'], 'refs/heads/cccs-release')]
+    value: true #$[eq(variables['Build.SourceBranch'], 'refs/heads/cccs-release')]
 
 steps:
   - task: Gradle@2
@@ -32,7 +32,7 @@ steps:
       gradleWrapperFile: 'gradlew'
       gradleOptions: '-Xmx3072m'
       javaHomeOption: 'JDKVersion'
-      jdkVersionOption: '1.8'
+      jdkVersionOption: '1.11'
       jdkArchitectureOption: 'x64'
       publishJUnitResults: true
       testResultsFiles: '**/TEST-*.xml'
@@ -55,7 +55,7 @@ steps:
       gradleWrapperFile: 'gradlew'
       gradleOptions: '-Xmx3072m'
       javaHomeOption: 'JDKVersion'
-      jdkVersionOption: '1.8'
+      jdkVersionOption: '1.11'
       jdkArchitectureOption: 'x64'
       publishJUnitResults: true
       testResultsFiles: '**/TEST-*.xml'
