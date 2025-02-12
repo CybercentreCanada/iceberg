@@ -50,6 +50,7 @@ public class JdbcClientPool extends ClientPoolImpl<Connection, SQLException> {
   // CCCS modification starts
   static final Set<String> COMMON_RETRYABLE_CONNECTION_SQL_STATES =
       ImmutableSet.of("08000", "08003", "08006", "08004", "08006", "08007", "40001", "57000");
+
   // CCCS modification ends
 
   private final String dbUrl;
