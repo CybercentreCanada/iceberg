@@ -148,7 +148,7 @@ public abstract class SnapshotScan<ThisT, T extends ScanTask, G extends ScanTask
                   .projectedFieldNames(projectedFieldNames)
                   .tableName(table().name())
                   .snapshotId(snapshot.snapshotId())
-                  .filter(schema().asStruct(), filter(), context().caseSensitive())
+                  .filter(filter())
                   .scanMetrics(ScanMetricsResult.fromScanMetrics(scanMetrics()))
                   .metadata(metadata)
                   .build();
