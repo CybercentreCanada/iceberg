@@ -69,3 +69,9 @@ derby.log
 
 # jenv
 .java-version
+
+# cccs start
+.metals
+.vscode
+.java-version
+
