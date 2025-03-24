@@ -72,3 +72,5 @@ derby.log
 .vscode
 # jenv
 .java-version
+
+.vscode
