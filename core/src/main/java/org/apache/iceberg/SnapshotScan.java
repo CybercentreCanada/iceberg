@@ -42,13 +42,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * This is a common base class to share code between different BaseScan
- * implementations that handle
+ * This is a common base class to share code between different BaseScan implementations that handle
  * scans of a particular snapshot.
  *
  * @param <ThisT> actual BaseScan implementation class type
- * @param <T>     type of ScanTask returned
- * @param <G>     type of ScanTaskGroup returned
+ * @param <T> type of ScanTask returned
+ * @param <G> type of ScanTaskGroup returned
  */
 public abstract class SnapshotScan<ThisT, T extends ScanTask, G extends ScanTaskGroup<T>>
     extends BaseScan<ThisT, T, G> {
@@ -87,7 +86,8 @@ public abstract class SnapshotScan<ThisT, T extends ScanTask, G extends ScanTask
         table().snapshot(scanSnapshotId) != null,
         "Cannot find snapshot with ID %s",
         scanSnapshotId);
-    Schema newSchema = useSnapshotSchema() ? SnapshotUtil.schemaFor(table(), scanSnapshotId) : tableSchema();
+    Schema newSchema =
+        useSnapshotSchema() ? SnapshotUtil.schemaFor(table(), scanSnapshotId) : tableSchema();
     TableScanContext newContext = context().useSnapshotId(scanSnapshotId);
     return newRefinedScan(table(), newSchema, newContext);
   }
@@ -130,8 +130,8 @@ public abstract class SnapshotScan<ThisT, T extends ScanTask, G extends ScanTask
 
     Listeners.notifyAll(new ScanEvent(table().name(), snapshot.snapshotId(), filter(), schema()));
     List<Integer> projectedFieldIds = Lists.newArrayList(TypeUtil.getProjectedIds(schema()));
-    List<String> projectedFieldNames = projectedFieldIds.stream().map(schema()::findColumnName)
-        .collect(Collectors.toList());
+    List<String> projectedFieldNames =
+        projectedFieldIds.stream().map(schema()::findColumnName).collect(Collectors.toList());
 
     Timer.Timed planningDuration = scanMetrics().totalPlanningDuration().start();
 
