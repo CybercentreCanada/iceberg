@@ -141,16 +141,17 @@ public abstract class SnapshotScan<ThisT, T extends ScanTask, G extends ScanTask
           planningDuration.stop();
           Map<String, String> metadata = Maps.newHashMap(context().options());
           metadata.putAll(EnvironmentContext.get());
-          ScanReport scanReport = ImmutableScanReport.builder()
-              .schemaId(schema().schemaId())
-              .projectedFieldIds(projectedFieldIds)
-              .projectedFieldNames(projectedFieldNames)
-              .tableName(table().name())
-              .snapshotId(snapshot.snapshotId())
-              .filter(filter())
-              .scanMetrics(ScanMetricsResult.fromScanMetrics(scanMetrics()))
-              .metadata(metadata)
-              .build();
+          ScanReport scanReport =
+              ImmutableScanReport.builder()
+                  .schemaId(schema().schemaId())
+                  .projectedFieldIds(projectedFieldIds)
+                  .projectedFieldNames(projectedFieldNames)
+                  .tableName(table().name())
+                  .snapshotId(snapshot.snapshotId())
+                  .filter(filter())
+                  .scanMetrics(ScanMetricsResult.fromScanMetrics(scanMetrics()))
+                  .metadata(metadata)
+                  .build();
           context().metricsReporter().report(scanReport);
         });
   }

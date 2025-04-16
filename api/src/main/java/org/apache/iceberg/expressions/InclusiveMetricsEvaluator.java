@@ -53,7 +53,6 @@ import org.apache.iceberg.util.NaNUtil;
  */
 public class InclusiveMetricsEvaluator {
   // CCCS modification: starts
-  // private static final int IN_PREDICATE_LIMIT = 200;
   private static final int IN_PREDICATE_LIMIT = 2000;
   // CCCS modification: end
 
