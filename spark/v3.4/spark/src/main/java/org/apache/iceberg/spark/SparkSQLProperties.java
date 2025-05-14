@@ -95,6 +95,4 @@ public class SparkSQLProperties {
     public static final String EXECUTOR_CACHE_LOCALITY_ENABLED = "spark.sql.iceberg.executor-cache.locality.enabled";
     public static final boolean EXECUTOR_CACHE_LOCALITY_ENABLED_DEFAULT = false;
 
-    // Prefix for custom snapshot properties
-    public static final String SNAPSHOT_PROPERTY_PREFIX = "spark.sql.iceberg.snapshot-property.";
 }
