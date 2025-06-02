@@ -95,7 +95,7 @@ subprojects {
 
           // CCCS modification starts
           groupId = 'cccs.ap.iceberg'
-          version = "1.7.0.3-SNAPSHOT"
+          version = "1.7.0.4-SNAPSHOT"
           // CCCS modification ends
           pom {
             name = 'Apache Iceberg'
