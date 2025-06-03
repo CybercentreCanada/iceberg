@@ -65,5 +65,10 @@ metastore_db/
 spark-warehouse/
 derby.log
 
+#
+.metals
+.vscode
 # jenv
 .java-version
+
+.vscode

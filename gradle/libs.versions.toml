@@ -43,21 +43,21 @@ esotericsoftware-kryo = "4.0.3"
 errorprone-annotations = "2.37.0"
 failsafe = "3.3.2"
 findbugs-jsr305 = "3.0.2"
-flink118 =  { strictly = "1.18.1"}
-flink119 =  { strictly = "1.19.2"}
-flink120 = { strictly = "1.20.1"}
+flink118 = { strictly = "1.18.1" }
+flink119 = { strictly = "1.19.2" }
+flink120 = { strictly = "1.20.1" }
 google-libraries-bom = "26.59.0"
 guava = "33.4.7-jre"
 hadoop3 = "3.4.1"
 httpcomponents-httpclient5 = "5.4.3"
-hive2 = { strictly = "2.3.10"} # see rich version usage explanation above
+hive2 = { strictly = "2.3.10" }      # see rich version usage explanation above
 immutables-value = "2.10.1"
 jackson-bom = "2.18.3"
-jackson211 = { strictly = "2.11.4"} # see rich version usage explanation above
-jackson212 = { strictly = "2.12.3"}
-jackson213 = { strictly = "2.13.4"}
-jackson214 = { strictly = "2.14.2"}
-jackson215 = { strictly = "2.15.2"}
+jackson211 = { strictly = "2.11.4" } # see rich version usage explanation above
+jackson212 = { strictly = "2.12.3" }
+jackson213 = { strictly = "2.13.4" }
+jackson214 = { strictly = "2.14.2" }
+jackson215 = { strictly = "2.15.2" }
 jakarta-el-api = "3.0.3"
 jakarta-servlet-api = "6.1.0"
 jaxb-api = "2.3.1"
@@ -83,7 +83,7 @@ spark34 = "3.4.4"
 spark35 = "3.5.5"
 sqlite-jdbc = "3.49.1.0"
 testcontainers = "1.20.6"
-tez08 = { strictly = "0.8.4"}  # see rich version usage explanation above
+tez08 = { strictly = "0.8.4" }       # see rich version usage explanation above
 
 [libraries]
 activation = { module = "javax.activation:activation", version.ref = "activation" }
@@ -98,14 +98,14 @@ avro-avro = { module = "org.apache.avro:avro", version.ref = "avro" }
 awssdk-bom = { module = "software.amazon.awssdk:bom", version.ref = "awssdk-bom" }
 awssdk-s3accessgrants = { module = "software.amazon.s3.accessgrants:aws-s3-accessgrants-java-plugin", version.ref = "awssdk-s3accessgrants" }
 azuresdk-bom = { module = "com.azure:azure-sdk-bom", version.ref = "azuresdk-bom" }
-bson = { module = "org.mongodb:bson", version.ref = "bson-ver"}
+bson = { module = "org.mongodb:bson", version.ref = "bson-ver" }
 caffeine = { module = "com.github.ben-manes.caffeine:caffeine", version.ref = "caffeine" }
 calcite-core = { module = "org.apache.calcite:calcite-core", version.ref = "calcite" }
 calcite-druid = { module = "org.apache.calcite:calcite-druid", version.ref = "calcite" }
 datasketches = { module = "org.apache.datasketches:datasketches-java", version.ref = "datasketches" }
 delta-standalone = { module = "io.delta:delta-standalone_2.12", version.ref = "delta-standalone" }
 errorprone-annotations = { module = "com.google.errorprone:error_prone_annotations", version.ref = "errorprone-annotations" }
-failsafe = { module = "dev.failsafe:failsafe", version.ref = "failsafe"}
+failsafe = { module = "dev.failsafe:failsafe", version.ref = "failsafe" }
 findbugs-jsr305 = { module = "com.google.code.findbugs:jsr305", version.ref = "findbugs-jsr305" }
 flink118-avro = { module = "org.apache.flink:flink-avro", version.ref = "flink118" }
 flink118-connector-base = { module = "org.apache.flink:flink-connector-base", version.ref = "flink118" }
@@ -143,8 +143,8 @@ jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", ver
 jackson-annotations = { module = "com.fasterxml.jackson.core:jackson-annotations", version.ref = "jackson-bom" }
 jackson211-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref = "jackson211" }
 jackson212-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref = "jackson212" }
-jackson213-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref =  "jackson213" }
-jackson214-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref =  "jackson214" }
+jackson213-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref = "jackson213" }
+jackson214-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref = "jackson214" }
 jackson215-bom = { module = "com.fasterxml.jackson:jackson-bom", version.ref = "jackson215" }
 jaxb-api = { module = "javax.xml.bind:jaxb-api", version.ref = "jaxb-api" }
 jaxb-runtime = { module = "org.glassfish.jaxb:jaxb-runtime", version.ref = "jaxb-runtime" }
@@ -161,7 +161,7 @@ parquet-avro = { module = "org.apache.parquet:parquet-avro", version.ref = "parq
 parquet-column = { module = "org.apache.parquet:parquet-column", version.ref = "parquet" }
 parquet-hadoop = { module = "org.apache.parquet:parquet-hadoop", version.ref = "parquet" }
 roaringbitmap = { module = "org.roaringbitmap:RoaringBitmap", version.ref = "roaringbitmap" }
-scala-collection-compat = { module = "org.scala-lang.modules:scala-collection-compat_2.13", version.ref = "scala-collection-compat"}
+scala-collection-compat = { module = "org.scala-lang.modules:scala-collection-compat_2.13", version.ref = "scala-collection-compat" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 slf4j-simple = { module = "org.slf4j:slf4j-simple", version.ref = "slf4j" }
 snowflake-jdbc = { module = "net.snowflake:snowflake-jdbc", version.ref = "snowflake-jdbc" }
@@ -189,7 +189,7 @@ flink120-test-utils = { module = "org.apache.flink:flink-test-utils", version.re
 flink120-test-utilsjunit = { module = "org.apache.flink:flink-test-utils-junit", version.ref = "flink120" }
 guava-testlib = { module = "com.google.guava:guava-testlib", version.ref = "guava" }
 jakarta-el-api = { module = "jakarta.el:jakarta.el-api", version.ref = "jakarta-el-api" }
-jakarta-servlet = {module = "jakarta.servlet:jakarta.servlet-api", version.ref = "jakarta-servlet-api"}
+jakarta-servlet = { module = "jakarta.servlet:jakarta.servlet-api", version.ref = "jakarta-servlet-api" }
 jetty-server = { module = "org.eclipse.jetty:jetty-server", version.ref = "jetty" }
 jetty-servlet = { module = "org.eclipse.jetty:jetty-servlet", version.ref = "jetty" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }

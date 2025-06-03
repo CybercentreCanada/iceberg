@@ -53,7 +53,9 @@ import org.apache.iceberg.variants.VariantObject;
  * checks for NaN is necessary in order to not skip files that may contain matching data.
  */
 public class InclusiveMetricsEvaluator {
-  private static final int IN_PREDICATE_LIMIT = 200;
+  // CCCS modification starts
+  private static final int IN_PREDICATE_LIMIT = 2000;
+  // CCCS modification end
 
   private final Expression expr;
 
