@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -44,9 +45,13 @@ import org.apache.iceberg.MetadataColumns;
 import org.apache.iceberg.common.DynConstructors;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
+import org.apache.iceberg.types.Type;
 import org.apache.iceberg.types.Types;
 import org.apache.iceberg.util.Pair;
 import org.apache.iceberg.util.UUIDUtil;
+import org.apache.iceberg.variants.Variant;
+import org.apache.iceberg.variants.VariantMetadata;
+import org.apache.iceberg.variants.VariantValue;
 
 public class ValueReaders {
   private ValueReaders() {}
@@ -139,6 +144,10 @@ public class ValueReaders {
     }
   }
 
+  public static ValueReader<Variant> variants() {
+    return VariantReader.INSTANCE;
+  }
+
   public static ValueReader<Object> union(List<ValueReader<?>> readers) {
     return new UnionReader(readers);
   }
@@ -199,6 +208,25 @@ public class ValueReaders {
       Schema record,
       List<ValueReader<?>> fieldReaders,
       Map<Integer, ?> idToConstant) {
+    return buildReadPlan(expected, record, fieldReaders, idToConstant, (type, value) -> value);
+  }
+
+  /**
+   * Builds a read plan for record classes that use planned reads instead of a ResolvingDecoder.
+   *
+   * @param expected expected StructType
+   * @param record Avro record schema
+   * @param fieldReaders list of readers for each field in the Avro record schema
+   * @param idToConstant a map of field ID to constants values
+   * @param convert function to convert from internal classes to the target object model
+   * @return a read plan that is a list of (position, reader) pairs
+   */
+  public static List<Pair<Integer, ValueReader<?>>> buildReadPlan(
+      Types.StructType expected,
+      Schema record,
+      List<ValueReader<?>> fieldReaders,
+      Map<Integer, ?> idToConstant,
+      BiFunction<Type, Object, Object> convert) {
     Map<Integer, Integer> idToPos = idToPos(expected);
 
     List<Pair<Integer, ValueReader<?>>> readPlan = Lists.newArrayList();
@@ -228,7 +256,9 @@ public class ValueReaders {
       if (constant != null) {
         readPlan.add(Pair.of(pos, ValueReaders.constant(constant)));
       } else if (field.initialDefault() != null) {
-        readPlan.add(Pair.of(pos, ValueReaders.constant(field.initialDefault())));
+        readPlan.add(
+            Pair.of(
+                pos, ValueReaders.constant(convert.apply(field.type(), field.initialDefault()))));
       } else if (fieldId == MetadataColumns.IS_DELETED.fieldId()) {
         readPlan.add(Pair.of(pos, ValueReaders.constant(false)));
       } else if (fieldId == MetadataColumns.ROW_POSITION.fieldId()) {
@@ -627,6 +657,34 @@ public class ValueReaders {
     @Override
     public void skip(Decoder decoder) throws IOException {
       bytesReader.skip(decoder);
+    }
+  }
+
+  private static class VariantReader implements ValueReader<Variant> {
+    private static final VariantReader INSTANCE = new VariantReader();
+
+    private final ValueReader<ByteBuffer> metadataReader;
+    private final ValueReader<ByteBuffer> valueReader;
+
+    private VariantReader() {
+      this.metadataReader = ByteBufferReader.INSTANCE;
+      this.valueReader = ByteBufferReader.INSTANCE;
+    }
+
+    @Override
+    public Variant read(Decoder decoder, Object reuse) throws IOException {
+      VariantMetadata metadata =
+          VariantMetadata.from(metadataReader.read(decoder, null).order(ByteOrder.LITTLE_ENDIAN));
+      VariantValue value =
+          VariantValue.from(
+              metadata, metadataReader.read(decoder, null).order(ByteOrder.LITTLE_ENDIAN));
+      return Variant.of(metadata, value);
+    }
+
+    @Override
+    public void skip(Decoder decoder) throws IOException {
+      metadataReader.skip(decoder);
+      valueReader.skip(decoder);
     }
   }
 
