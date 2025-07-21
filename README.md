@@ -6,7 +6,7 @@ You can review the original [README.md](https://github.com/apache/iceberg/blob/m
 
 ## What's in this fork
 
-This fork includes pull-requests made `upstream` that have not yet been merged and have been deemed to be to be either usefull or necessary for CCCS' usecases.
+This fork includes pull-requests made `upstream` that have not yet been merged and have been deemed to be either usefull or necessary for CCCS' usecases.
 
 It also includes some pull-request made by CCCS developers that are specific to CCCS usecases and are therefore only issued against `origin`.
 
