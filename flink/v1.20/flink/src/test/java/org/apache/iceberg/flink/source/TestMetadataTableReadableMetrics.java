@@ -220,8 +220,7 @@ public class TestMetadataTableReadableMetrics extends CatalogTestBase {
 
     // With new releases of Parquet, new features might be added which cause the
     // size of the column to increase. For example, with Parquet 1.14.x the
-    // uncompressed size has been added to allow for better allocation of memory
-    // upfront.
+    // uncompressed size has been added to allow for better allocation of memory upfront.
     // Therefore, we look the sizes up, rather than hardcoding them
     DataFile dataFile = table.currentSnapshot().addedDataFiles(table.io()).iterator().next();
     Map<Integer, Long> columnSizeStats = dataFile.columnSizes();
