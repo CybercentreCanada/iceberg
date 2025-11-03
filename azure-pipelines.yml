@@ -20,7 +20,7 @@ variables:
     value: true #$[eq(variables['Build.SourceBranch'], 'refs/heads/cccs-release')]
 
 steps:
-  - task: Gradle@2
+  - task: Gradle@3
     displayName: 'Build org.cccs.iceberg'
     inputs:
       workingDirectory: ''
@@ -45,7 +45,7 @@ steps:
       PathtoPublish: "$(Build.SourcesDirectory)/build"
       ArtifactName: "iceberg"
       publishLocation: "Container"
-  - task: Gradle@2
+  - task: Gradle@3
     displayName: 'Publish org.cccs.iceberg'
     condition: and(succeeded(), eq(variables.isPublish, true))
     inputs:
