@@ -9,11 +9,6 @@ trigger:
       - cccs-release
       - iceberg-*
 
-pr:
-  branches:
-    include:
-      - cccs-release
-      - iceberg-*
 
 pool:
   vmImage: ubuntu-latest
