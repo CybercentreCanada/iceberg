@@ -32,6 +32,9 @@ steps:
       publishJUnitResults: true
       testResultsFiles: '**/TEST-*.xml'
       tasks: 'build -x test -x integrationTest'
+      options: >
+        -DknownSparkVersions=3.5
+        -DdefaultSparkVersions=3.5
   - script: |
       ./cccs-publish.sh
     condition: succeeded()
