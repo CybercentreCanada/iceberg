@@ -71,7 +71,7 @@ stages:
 
           - task: Gradle@3
             displayName: 'Publish org.cccs.iceberg'
-            condition: and(succeeded(), eq(variables.isPublish, true))
+            condition: eq(variables.isPublish, true)
             inputs:
               workingDirectory: ''
               gradleWrapperFile: 'gradlew'
@@ -83,6 +83,5 @@ stages:
               testResultsFiles: '**/TEST-*.xml'
               tasks: 'publish'
               options: >
-                -PMAVEN_USER=cccs-stratus
-                -PMAVEN_PWD=$(System.AccessToken)
-                -PPUBLISH_JAR_PATH=$(PUBLISH_JAR_PATH)
+                -PMAVEN_USER=$(MAVENUSER)
+                -PMAVEN_PWD=$(MAVENPWD)
