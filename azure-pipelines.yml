@@ -17,7 +17,7 @@ pool:
 variables:
   - group: MAVEN_PUBLISH_ARGS
   - name: isPublish
-    value: true #$[eq(variables['Build.SourceBranch'], 'refs/heads/cccs-release')]
+    value: true
 
 
 steps:
@@ -50,5 +50,7 @@ steps:
       testResultsFiles: '**/TEST-*.xml'
       tasks: 'publish'
       options: >
+        -DknownSparkVersions=3.5
+        -DdefaultSparkVersions=3.5
         -PMAVEN_USER=$(MAVENUSER)
         -PMAVEN_PWD=$(MAVENPWD)                
