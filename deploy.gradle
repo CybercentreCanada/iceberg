@@ -98,6 +98,7 @@ subprojects {
           groupId = 'cccs.ap.iceberg'
           version = "1.10.0.0-SNAPSHOT"
           // CCCS modification ends
+
           pom {
             name = 'Apache Iceberg'
             description = 'A table format for huge analytic datasets'
@@ -147,8 +148,8 @@ subprojects {
             basic(BasicAuthentication)
           }
           credentials {
-            username project.findProperty('mavenUser')
-            password project.findProperty('mavenPassword')
+            username project.findProperty('MAVEN_USER')
+            password project.findProperty('MAVEN_PWD')
           }
         }
       }
