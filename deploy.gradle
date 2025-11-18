@@ -17,8 +17,8 @@
  * under the License.
  */
 
-if (project.hasProperty('release') && jdkVersion != '11') {
-  throw new GradleException("Releases must be built with Java 11")
+if (project.hasProperty('release') && jdkVersion != '17') {
+  throw new GradleException("Releases must be built with Java 17")
 }
 
 subprojects {
@@ -96,8 +96,9 @@ subprojects {
 
           // CCCS modification starts
           groupId = 'cccs.ap.iceberg'
-          version = "1.9.1.0-SNAPSHOT"
+          version = "1.10.0.0-SNAPSHOT"
           // CCCS modification ends
+
           pom {
             name = 'Apache Iceberg'
             description = 'A table format for huge analytic datasets'
@@ -125,20 +126,6 @@ subprojects {
       }
 
       // CCCS modification: starts
-      // repositories {
-      //   maven {
-      //     credentials {
-      //       username project.hasProperty('mavenUser') ? "$mavenUser" : ""
-      //       password project.hasProperty('mavenPassword') ? "$mavenPassword" : ""
-      //     }
-      //     // upload to the releases repository using ./gradlew -Prelease publish
-      //     def apacheSnapshotsRepoUrl = 'https://repository.apache.org/content/repositories/snapshots'
-      //     def apacheReleasesRepoUrl = 'https://repository.apache.org/service/local/staging/deploy/maven2'
-      //     def snapshotsRepoUrl = project.hasProperty('mavenSnapshotsRepo') ? "$mavenSnapshotsRepo" : "$apacheSnapshotsRepoUrl"
-      //     def releasesRepoUrl = project.hasProperty('mavenReleasesRepo') ? "$mavenReleasesRepo" : "$apacheReleasesRepoUrl"
-      //     url = project.hasProperty('release') ? releasesRepoUrl : snapshotsRepoUrl
-      //   }
-      // }
       repositories {
         maven {
           url 'https://pkgs.dev.azure.com/cccs-stratus/_packaging/cccs-stratus/maven/v1'
@@ -147,8 +134,8 @@ subprojects {
             basic(BasicAuthentication)
           }
           credentials {
-            username project.findProperty('mavenUser')
-            password project.findProperty('mavenPassword')
+            username project.findProperty('MAVEN_USER')
+            password project.findProperty('MAVEN_PWD')
           }
         }
       }

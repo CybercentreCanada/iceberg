@@ -194,6 +194,13 @@ class SortOrder(BaseModel):
     fields: List[SortField]
 
 
+class EncryptedKey(BaseModel):
+    key_id: str = Field(..., alias='key-id')
+    encrypted_key_metadata: str = Field(..., alias='encrypted-key-metadata')
+    encrypted_by_id: Optional[str] = Field(None, alias='encrypted-by-id')
+    properties: Optional[Dict[str, str]] = None
+
+
 class Summary(BaseModel):
     operation: Literal['append', 'replace', 'overwrite', 'delete']
 
@@ -207,6 +214,11 @@ class Snapshot(BaseModel):
         ...,
         alias='manifest-list',
         description="Location of the snapshot's manifest list file",
+    )
+    first_row_id: Optional[int] = Field(
+        None,
+        alias='first-row-id',
+        description='The first _row_id assigned to the first row in the first data file in the first manifest',
     )
     summary: Summary
     schema_id: Optional[int] = Field(None, alias='schema-id')
@@ -395,8 +407,14 @@ class RemoveSchemasUpdate(BaseUpdate):
     schema_ids: List[int] = Field(..., alias='schema-ids')
 
 
-class EnableRowLineageUpdate(BaseUpdate):
-    action: str = Field('enable-row-lineage', const=True)
+class AddEncryptionKeyUpdate(BaseUpdate):
+    action: str = Field('add-encryption-key', const=True)
+    encryption_key: EncryptedKey = Field(..., alias='encryption-key')
+
+
+class RemoveEncryptionKeyUpdate(BaseUpdate):
+    action: str = Field('remove-encryption-key', const=True)
+    key_id: str = Field(..., alias='key-id')
 
 
 class TableRequirement(BaseModel):
@@ -422,7 +440,10 @@ class AssertTableUUID(TableRequirement):
 
 class AssertRefSnapshotId(TableRequirement):
     """
-    The table branch or tag identified by the requirement's `ref` must reference the requirement's `snapshot-id`; if `snapshot-id` is `null` or missing, the ref must not already exist
+    The table branch or tag identified by the requirement's `ref` must reference the requirement's `snapshot-id`.
+    The `snapshot-id` field is required in this object, but in the case of a `null`
+    the ref must not already exist.
+
     """
 
     type: str = Field('assert-ref-snapshot-id', const=True)
@@ -991,6 +1012,11 @@ class ValueMap(BaseModel):
 
 class DataFile(ContentFile):
     content: str = Field(..., const=True)
+    first_row_id: Optional[int] = Field(
+        None,
+        alias='first-row-id',
+        description='The first row ID assigned to the first row in the data file',
+    )
     column_sizes: Optional[CountMap] = Field(
         None,
         alias='column-sizes',
@@ -1124,10 +1150,15 @@ class NotExpression(BaseModel):
 
 
 class TableMetadata(BaseModel):
-    format_version: int = Field(..., alias='format-version', ge=1, le=2)
+    format_version: int = Field(..., alias='format-version', ge=1, le=3)
     table_uuid: str = Field(..., alias='table-uuid')
     location: Optional[str] = None
     last_updated_ms: Optional[int] = Field(None, alias='last-updated-ms')
+    next_row_id: Optional[int] = Field(
+        None,
+        alias='next-row-id',
+        description="A long higher than all assigned row IDs; the next snapshot's first-row-id.",
+    )
     properties: Optional[Dict[str, str]] = None
     schemas: Optional[List[Schema]] = None
     current_schema_id: Optional[int] = Field(None, alias='current-schema-id')
@@ -1139,6 +1170,7 @@ class TableMetadata(BaseModel):
     last_partition_id: Optional[int] = Field(None, alias='last-partition-id')
     sort_orders: Optional[List[SortOrder]] = Field(None, alias='sort-orders')
     default_sort_order_id: Optional[int] = Field(None, alias='default-sort-order-id')
+    encryption_keys: Optional[List[EncryptedKey]] = Field(None, alias='encryption-keys')
     snapshots: Optional[List[Snapshot]] = None
     refs: Optional[SnapshotReferences] = None
     current_snapshot_id: Optional[int] = Field(None, alias='current-snapshot-id')
@@ -1193,7 +1225,8 @@ class TableUpdate(BaseModel):
         RemoveStatisticsUpdate,
         RemovePartitionSpecsUpdate,
         RemoveSchemasUpdate,
-        EnableRowLineageUpdate,
+        AddEncryptionKeyUpdate,
+        RemoveEncryptionKeyUpdate,
     ]
 
 
