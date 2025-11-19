@@ -7,7 +7,6 @@ trigger:
   branches:
     include:
       - cccs-release
-      - iceberg-*
 
 
 pool:
@@ -53,4 +52,4 @@ steps:
         -DknownSparkVersions=3.5
         -DdefaultSparkVersions=3.5
         -PMAVEN_USER=$(MAVENUSER)
-        -PMAVEN_PWD=$(MAVENPWD)                
+        -PMAVEN_PWD=$(MAVENPWD)
