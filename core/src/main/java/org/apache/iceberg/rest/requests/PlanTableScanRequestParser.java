@@ -78,7 +78,8 @@ public class PlanTableScanRequestParser {
     }
 
     if (request.filter() != null) {
-      gen.writeStringField(FILTER, ExpressionParser.toJson(request.filter()));
+      gen.writeFieldName(FILTER);
+      ExpressionParser.toJson(request.filter(), gen);
     }
 
     gen.writeBooleanField(CASE_SENSITIVE, request.caseSensitive());
@@ -106,7 +107,7 @@ public class PlanTableScanRequestParser {
 
     Expression filter = null;
     if (json.has(FILTER)) {
-      filter = ExpressionParser.fromJson(json.get(FILTER).textValue());
+      filter = ExpressionParser.fromJson(json.get(FILTER));
     }
 
     boolean caseSensitive = true;
@@ -121,7 +122,7 @@ public class PlanTableScanRequestParser {
 
     List<String> statsFields = JsonUtil.getStringListOrNull(STATS_FIELDS, json);
 
-    return new PlanTableScanRequest.Builder()
+    return PlanTableScanRequest.builder()
         .withSnapshotId(snapshotId)
         .withSelect(select)
         .withFilter(filter)
