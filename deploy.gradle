@@ -96,7 +96,7 @@ subprojects {
 
           // CCCS modification starts
           groupId = 'cccs.ap.iceberg'
-          version = "1.10.0.1-SNAPSHOT"
+          version = "1.10.1.0-SNAPSHOT"
           // CCCS modification ends
 
           pom {
