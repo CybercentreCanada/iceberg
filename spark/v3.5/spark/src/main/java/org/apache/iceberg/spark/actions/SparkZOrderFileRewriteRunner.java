@@ -150,7 +150,7 @@ class SparkZOrderFileRewriteRunner extends SparkShufflingFileRewriteRunner {
     return zOrderUDF.interleaveBytes(array(zOrderCols));
   }
 
-    private Column getColumn(
+  private Column getColumn(
       String zOrderColName,
       Dataset<Row> df,
       SparkZOrderUDF zOrderUDF,

@@ -99,7 +99,8 @@ class ReadConf<T> {
     long computedTotalValues = 0L;
     for (int i = 0; i < shouldSkip.length; i += 1) {
       BlockMetaData rowGroup = rowGroups.get(i);
-      filter == null || combinedFilter.shouldRead(typeWithIds, rowGroup, reader);
+      boolean shouldRead =
+          filter == null || combinedFilter.shouldRead(typeWithIds, rowGroup, reader);
 
       this.shouldSkip[i] = !shouldRead;
       if (shouldRead) {
