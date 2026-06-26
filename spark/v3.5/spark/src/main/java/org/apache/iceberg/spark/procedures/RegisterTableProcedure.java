@@ -36,13 +36,11 @@ import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
 
 class RegisterTableProcedure extends BaseProcedure {
-  private static final ProcedureParameter TABLE_PARAM =
-      requiredInParameter("table", DataTypes.StringType);
-  private static final ProcedureParameter METADATA_FILE_PARAM =
-      requiredInParameter("metadata_file", DataTypes.StringType);
-
   private static final ProcedureParameter[] PARAMETERS =
-      new ProcedureParameter[] {TABLE_PARAM, METADATA_FILE_PARAM};
+      new ProcedureParameter[] {
+        ProcedureParameter.required("table", DataTypes.StringType),
+        ProcedureParameter.required("metadata_file", DataTypes.StringType)
+      };
 
   private static final StructType OUTPUT_TYPE =
       new StructType(
@@ -77,11 +75,9 @@ class RegisterTableProcedure extends BaseProcedure {
 
   @Override
   public InternalRow[] call(InternalRow args) {
-    ProcedureInput input = new ProcedureInput(spark(), tableCatalog(), PARAMETERS, args);
     TableIdentifier tableName =
-        Spark3Util.identifierToTableIdentifier(
-            toIdentifier(input.asString(TABLE_PARAM), TABLE_PARAM.name()));
-    String metadataFile = input.asString(METADATA_FILE_PARAM);
+        Spark3Util.identifierToTableIdentifier(toIdentifier(args.getString(0), "table"));
+    String metadataFile = args.getString(1);
     Preconditions.checkArgument(
         tableCatalog() instanceof HasIcebergCatalog,
         "Cannot use Register Table in a non-Iceberg catalog");

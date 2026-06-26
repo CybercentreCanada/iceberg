@@ -25,6 +25,7 @@ import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.spark.actions.ExpireSnapshotsSparkAction;
 import org.apache.iceberg.spark.actions.SparkActions;
 import org.apache.iceberg.spark.procedures.SparkProcedures.ProcedureBuilder;
+import org.apache.iceberg.util.DateTimeUtil;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
@@ -45,30 +46,15 @@ public class ExpireSnapshotsProcedure extends BaseProcedure {
 
   private static final Logger LOG = LoggerFactory.getLogger(ExpireSnapshotsProcedure.class);
 
-  private static final ProcedureParameter TABLE_PARAM =
-      requiredInParameter("table", DataTypes.StringType);
-  private static final ProcedureParameter OLDER_THAN_PARAM =
-      optionalInParameter("older_than", DataTypes.TimestampType);
-  private static final ProcedureParameter RETAIN_LAST_PARAM =
-      optionalInParameter("retain_last", DataTypes.IntegerType);
-  private static final ProcedureParameter MAX_CONCURRENT_DELETES_PARAM =
-      optionalInParameter("max_concurrent_deletes", DataTypes.IntegerType);
-  private static final ProcedureParameter STREAM_RESULTS_PARAM =
-      optionalInParameter("stream_results", DataTypes.BooleanType);
-  private static final ProcedureParameter SNAPSHOT_IDS_PARAM =
-      optionalInParameter("snapshot_ids", DataTypes.createArrayType(DataTypes.LongType));
-  private static final ProcedureParameter CLEAN_EXPIRED_METADATA_PARAM =
-      optionalInParameter("clean_expired_metadata", DataTypes.BooleanType);
-
   private static final ProcedureParameter[] PARAMETERS =
       new ProcedureParameter[] {
-        TABLE_PARAM,
-        OLDER_THAN_PARAM,
-        RETAIN_LAST_PARAM,
-        MAX_CONCURRENT_DELETES_PARAM,
-        STREAM_RESULTS_PARAM,
-        SNAPSHOT_IDS_PARAM,
-        CLEAN_EXPIRED_METADATA_PARAM
+        ProcedureParameter.required("table", DataTypes.StringType),
+        ProcedureParameter.optional("older_than", DataTypes.TimestampType),
+        ProcedureParameter.optional("retain_last", DataTypes.IntegerType),
+        ProcedureParameter.optional("max_concurrent_deletes", DataTypes.IntegerType),
+        ProcedureParameter.optional("stream_results", DataTypes.BooleanType),
+        ProcedureParameter.optional("snapshot_ids", DataTypes.createArrayType(DataTypes.LongType)),
+        ProcedureParameter.optional("clean_expired_metadata", DataTypes.BooleanType)
       };
 
   private static final StructType OUTPUT_TYPE =
@@ -113,14 +99,13 @@ public class ExpireSnapshotsProcedure extends BaseProcedure {
   @Override
   @SuppressWarnings("checkstyle:CyclomaticComplexity")
   public InternalRow[] call(InternalRow args) {
-    ProcedureInput input = new ProcedureInput(spark(), tableCatalog(), PARAMETERS, args);
-    Identifier tableIdent = input.ident(TABLE_PARAM);
-    Long olderThanMillis = input.asTimestampMillis(OLDER_THAN_PARAM, null);
-    Integer retainLastNum = input.asInt(RETAIN_LAST_PARAM, null);
-    Integer maxConcurrentDeletes = input.asInt(MAX_CONCURRENT_DELETES_PARAM, null);
-    Boolean streamResult = input.asBoolean(STREAM_RESULTS_PARAM, null);
-    long[] snapshotIds = input.asLongArray(SNAPSHOT_IDS_PARAM, null);
-    Boolean cleanExpiredMetadata = input.asBoolean(CLEAN_EXPIRED_METADATA_PARAM, null);
+    Identifier tableIdent = toIdentifier(args.getString(0), PARAMETERS[0].name());
+    Long olderThanMillis = args.isNullAt(1) ? null : DateTimeUtil.microsToMillis(args.getLong(1));
+    Integer retainLastNum = args.isNullAt(2) ? null : args.getInt(2);
+    Integer maxConcurrentDeletes = args.isNullAt(3) ? null : args.getInt(3);
+    Boolean streamResult = args.isNullAt(4) ? null : args.getBoolean(4);
+    long[] snapshotIds = args.isNullAt(5) ? null : args.getArray(5).toLongArray();
+    Boolean cleanExpiredMetadata = args.isNullAt(6) ? null : args.getBoolean(6);
 
     Preconditions.checkArgument(
         maxConcurrentDeletes == null || maxConcurrentDeletes > 0,

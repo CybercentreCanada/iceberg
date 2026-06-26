@@ -25,11 +25,12 @@ import org.apache.iceberg.actions.DeleteOrphanFiles;
 import org.apache.iceberg.actions.DeleteOrphanFiles.PrefixMismatchMode;
 import org.apache.iceberg.io.SupportsBulkOperations;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
-import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
 import org.apache.iceberg.relocated.com.google.common.collect.Iterables;
+import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.apache.iceberg.spark.actions.DeleteOrphanFilesSparkAction;
 import org.apache.iceberg.spark.actions.SparkActions;
 import org.apache.iceberg.spark.procedures.SparkProcedures.ProcedureBuilder;
+import org.apache.iceberg.util.DateTimeUtil;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
@@ -41,6 +42,7 @@ import org.apache.spark.sql.types.StructType;
 import org.apache.spark.unsafe.types.UTF8String;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import scala.runtime.BoxedUnit;
 
 /**
  * A procedure that removes orphan files in a table.
@@ -71,9 +73,6 @@ public class RemoveOrphanFilesProcedure extends BaseProcedure {
   // List files with prefix operations. Default is false.
   private static final ProcedureParameter PREFIX_LISTING_PARAM =
       optionalInParameter("prefix_listing", DataTypes.BooleanType);
-  // Stream results to avoid loading all orphan files in driver memory. Default is false.
-  private static final ProcedureParameter STREAM_RESULTS_PARAM =
-      optionalInParameter("stream_results", DataTypes.BooleanType);
 
   private static final ProcedureParameter[] PARAMETERS =
       new ProcedureParameter[] {
@@ -86,8 +85,7 @@ public class RemoveOrphanFilesProcedure extends BaseProcedure {
         EQUAL_SCHEMES_PARAM,
         EQUAL_AUTHORITIES_PARAM,
         PREFIX_MISMATCH_MODE_PARAM,
-        PREFIX_LISTING_PARAM,
-        STREAM_RESULTS_PARAM
+        PREFIX_LISTING_PARAM
       };
 
   private static final StructType OUTPUT_TYPE =
@@ -122,27 +120,43 @@ public class RemoveOrphanFilesProcedure extends BaseProcedure {
   @Override
   @SuppressWarnings("checkstyle:CyclomaticComplexity")
   public InternalRow[] call(InternalRow args) {
-    ProcedureInput input = new ProcedureInput(spark(), tableCatalog(), PARAMETERS, args);
-    Identifier tableIdent = input.ident(TABLE_PARAM);
-    Long olderThanMillis = input.asTimestampMillis(OLDER_THAN_PARAM, null);
-    String location = input.asString(LOCATION_PARAM, null);
-    boolean dryRun = input.asBoolean(DRY_RUN_PARAM, false);
-    Integer maxConcurrentDeletes = input.asInt(MAX_CONCURRENT_DELETES_PARAM, null);
-    String fileListView = input.asString(FILE_LIST_VIEW_PARAM, null);
+    Identifier tableIdent = toIdentifier(args.getString(0), PARAMETERS[0].name());
+    Long olderThanMillis = args.isNullAt(1) ? null : DateTimeUtil.microsToMillis(args.getLong(1));
+    String location = args.isNullAt(2) ? null : args.getString(2);
+    boolean dryRun = args.isNullAt(3) ? false : args.getBoolean(3);
+    Integer maxConcurrentDeletes = args.isNullAt(4) ? null : args.getInt(4);
+    String fileListView = args.isNullAt(5) ? null : args.getString(5);
 
     Preconditions.checkArgument(
         maxConcurrentDeletes == null || maxConcurrentDeletes > 0,
         "max_concurrent_deletes should have value > 0, value: %s",
         maxConcurrentDeletes);
 
-    Map<String, String> equalSchemes = input.asStringMap(EQUAL_SCHEMES_PARAM, ImmutableMap.of());
-    Map<String, String> equalAuthorities =
-        input.asStringMap(EQUAL_AUTHORITIES_PARAM, ImmutableMap.of());
+    Map<String, String> equalSchemes = Maps.newHashMap();
+    if (!args.isNullAt(6)) {
+      args.getMap(6)
+          .foreach(
+              DataTypes.StringType,
+              DataTypes.StringType,
+              (k, v) -> {
+                equalSchemes.put(k.toString(), v.toString());
+                return BoxedUnit.UNIT;
+              });
+    }
 
-    PrefixMismatchMode prefixMismatchMode = asPrefixMismatchMode(input, PREFIX_MISMATCH_MODE_PARAM);
+    Map<String, String> equalAuthorities = Maps.newHashMap();
+    if (!args.isNullAt(7)) {
+      args.getMap(7)
+          .foreach(
+              DataTypes.StringType,
+              DataTypes.StringType,
+              (k, v) -> {
+                equalAuthorities.put(k.toString(), v.toString());
+                return BoxedUnit.UNIT;
+              });
+    }
 
     boolean prefixListing = input.asBoolean(PREFIX_LISTING_PARAM, false);
-    boolean streamResults = input.asBoolean(STREAM_RESULTS_PARAM, false);
 
     return withIcebergTable(
         tableIdent,
@@ -168,10 +182,10 @@ public class RemoveOrphanFilesProcedure extends BaseProcedure {
           if (maxConcurrentDeletes != null) {
             if (table.io() instanceof SupportsBulkOperations) {
               LOG.warn(
-                  "max_concurrent_deletes only works with FileIOs that do not support bulk deletes. This "
-                      + "table is currently using {} which supports bulk deletes so the parameter will be ignored. "
-                      + "See that IO's documentation to learn how to adjust parallelism for that particular "
-                      + "IO's bulk delete.",
+                  "max_concurrent_deletes only works with FileIOs that do not support bulk deletes."
+                      + " Thistable is currently using {} which supports bulk deletes so the"
+                      + " parameter will be ignored. See that IO's documentation to learn how to"
+                      + " adjust parallelism for that particular IO's bulk delete.",
                   table.io().getClass().getName());
             } else {
 
@@ -191,10 +205,6 @@ public class RemoveOrphanFilesProcedure extends BaseProcedure {
           }
 
           action.usePrefixListing(prefixListing);
-
-          if (streamResults) {
-            action.option("stream-results", "true");
-          }
 
           DeleteOrphanFiles.Result result = action.execute();
 
@@ -221,21 +231,16 @@ public class RemoveOrphanFilesProcedure extends BaseProcedure {
     long intervalMillis = System.currentTimeMillis() - olderThanMillis;
     if (intervalMillis < TimeUnit.DAYS.toMillis(1)) {
       throw new IllegalArgumentException(
-          "Cannot remove orphan files with an interval less than 24 hours. Executing this "
-              + "procedure with a short interval may corrupt the table if other operations are happening "
-              + "at the same time. If you are absolutely confident that no concurrent operations will be "
-              + "affected by removing orphan files with such a short interval, you can use the Action API "
-              + "to remove orphan files with an arbitrary interval.");
+          "Cannot remove orphan files with an interval less than 24 hours. Executing this procedure"
+              + " with a short interval may corrupt the table if other operations are happening at"
+              + " the same time. If you are absolutely confident that no concurrent operations will"
+              + " be affected by removing orphan files with such a short interval, you can use the"
+              + " Action API to remove orphan files with an arbitrary interval.");
     }
   }
 
   @Override
   public String description() {
     return "RemoveOrphanFilesProcedure";
-  }
-
-  private PrefixMismatchMode asPrefixMismatchMode(ProcedureInput input, ProcedureParameter param) {
-    String modeAsString = input.asString(param, null);
-    return (modeAsString == null) ? null : PrefixMismatchMode.fromString(modeAsString);
   }
 }

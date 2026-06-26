@@ -40,13 +40,11 @@ import org.apache.spark.sql.types.StructType;
  */
 class CherrypickSnapshotProcedure extends BaseProcedure {
 
-  private static final ProcedureParameter TABLE_PARAM =
-      requiredInParameter("table", DataTypes.StringType);
-  private static final ProcedureParameter SNAPSHOT_ID_PARAM =
-      requiredInParameter("snapshot_id", DataTypes.LongType);
-
   private static final ProcedureParameter[] PARAMETERS =
-      new ProcedureParameter[] {TABLE_PARAM, SNAPSHOT_ID_PARAM};
+      new ProcedureParameter[] {
+        ProcedureParameter.required("table", DataTypes.StringType),
+        ProcedureParameter.required("snapshot_id", DataTypes.LongType)
+      };
 
   private static final StructType OUTPUT_TYPE =
       new StructType(
@@ -80,10 +78,8 @@ class CherrypickSnapshotProcedure extends BaseProcedure {
 
   @Override
   public InternalRow[] call(InternalRow args) {
-    ProcedureInput input = new ProcedureInput(spark(), tableCatalog(), PARAMETERS, args);
-
-    Identifier tableIdent = input.ident(TABLE_PARAM);
-    long snapshotId = input.asLong(SNAPSHOT_ID_PARAM);
+    Identifier tableIdent = toIdentifier(args.getString(0), PARAMETERS[0].name());
+    long snapshotId = args.getLong(1);
 
     return modifyIcebergTable(
         tableIdent,

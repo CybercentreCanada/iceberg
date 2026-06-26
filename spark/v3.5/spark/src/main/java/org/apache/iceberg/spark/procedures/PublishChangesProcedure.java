@@ -44,13 +44,11 @@ import org.apache.spark.sql.types.StructType;
  */
 class PublishChangesProcedure extends BaseProcedure {
 
-  private static final ProcedureParameter TABLE_PARAM =
-      requiredInParameter("table", DataTypes.StringType);
-  private static final ProcedureParameter WAP_ID_PARAM =
-      requiredInParameter("wap_id", DataTypes.StringType);
-
   private static final ProcedureParameter[] PARAMETERS =
-      new ProcedureParameter[] {TABLE_PARAM, WAP_ID_PARAM};
+      new ProcedureParameter[] {
+        ProcedureParameter.required("table", DataTypes.StringType),
+        ProcedureParameter.required("wap_id", DataTypes.StringType)
+      };
 
   private static final StructType OUTPUT_TYPE =
       new StructType(
@@ -84,10 +82,8 @@ class PublishChangesProcedure extends BaseProcedure {
 
   @Override
   public InternalRow[] call(InternalRow args) {
-    ProcedureInput input = new ProcedureInput(spark(), tableCatalog(), PARAMETERS, args);
-
-    Identifier tableIdent = input.ident(TABLE_PARAM);
-    String wapId = input.asString(WAP_ID_PARAM);
+    Identifier tableIdent = toIdentifier(args.getString(0), PARAMETERS[0].name());
+    String wapId = args.getString(1);
 
     return modifyIcebergTable(
         tableIdent,

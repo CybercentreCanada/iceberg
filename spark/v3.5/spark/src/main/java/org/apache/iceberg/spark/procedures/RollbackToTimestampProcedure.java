@@ -20,6 +20,7 @@ package org.apache.iceberg.spark.procedures;
 
 import org.apache.iceberg.Snapshot;
 import org.apache.iceberg.spark.procedures.SparkProcedures.ProcedureBuilder;
+import org.apache.iceberg.util.DateTimeUtil;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.connector.catalog.Identifier;
 import org.apache.spark.sql.connector.catalog.TableCatalog;
@@ -39,13 +40,11 @@ import org.apache.spark.sql.types.StructType;
  */
 class RollbackToTimestampProcedure extends BaseProcedure {
 
-  private static final ProcedureParameter TABLE_PARAM =
-      requiredInParameter("table", DataTypes.StringType);
-  private static final ProcedureParameter TIMESTAMP_PARAM =
-      requiredInParameter("timestamp", DataTypes.TimestampType);
-
   private static final ProcedureParameter[] PARAMETERS =
-      new ProcedureParameter[] {TABLE_PARAM, TIMESTAMP_PARAM};
+      new ProcedureParameter[] {
+        ProcedureParameter.required("table", DataTypes.StringType),
+        ProcedureParameter.required("timestamp", DataTypes.TimestampType)
+      };
 
   private static final StructType OUTPUT_TYPE =
       new StructType(
@@ -79,10 +78,9 @@ class RollbackToTimestampProcedure extends BaseProcedure {
 
   @Override
   public InternalRow[] call(InternalRow args) {
-    ProcedureInput input = new ProcedureInput(spark(), tableCatalog(), PARAMETERS, args);
-    Identifier tableIdent = input.ident(TABLE_PARAM);
+    Identifier tableIdent = toIdentifier(args.getString(0), PARAMETERS[0].name());
     // timestamps in Spark have microsecond precision so this conversion is lossy
-    long timestampMillis = input.asTimestampMillis(TIMESTAMP_PARAM);
+    long timestampMillis = DateTimeUtil.microsToMillis(args.getLong(1));
 
     return modifyIcebergTable(
         tableIdent,

@@ -30,15 +30,12 @@ import org.apache.spark.unsafe.types.UTF8String;
 
 public class FastForwardBranchProcedure extends BaseProcedure {
 
-  private static final ProcedureParameter TABLE_PARAM =
-      requiredInParameter("table", DataTypes.StringType);
-  private static final ProcedureParameter BRANCH_PARAM =
-      requiredInParameter("branch", DataTypes.StringType);
-  private static final ProcedureParameter TO_PARAM =
-      requiredInParameter("to", DataTypes.StringType);
-
   private static final ProcedureParameter[] PARAMETERS =
-      new ProcedureParameter[] {TABLE_PARAM, BRANCH_PARAM, TO_PARAM};
+      new ProcedureParameter[] {
+        ProcedureParameter.required("table", DataTypes.StringType),
+        ProcedureParameter.required("branch", DataTypes.StringType),
+        ProcedureParameter.required("to", DataTypes.StringType)
+      };
 
   private static final StructType OUTPUT_TYPE =
       new StructType(
@@ -73,11 +70,9 @@ public class FastForwardBranchProcedure extends BaseProcedure {
 
   @Override
   public InternalRow[] call(InternalRow args) {
-    ProcedureInput input = new ProcedureInput(spark(), tableCatalog(), PARAMETERS, args);
-
-    Identifier tableIdent = input.ident(TABLE_PARAM);
-    String from = input.asString(BRANCH_PARAM);
-    String to = input.asString(TO_PARAM);
+    Identifier tableIdent = toIdentifier(args.getString(0), PARAMETERS[0].name());
+    String from = args.getString(1);
+    String to = args.getString(2);
 
     return modifyIcebergTable(
         tableIdent,
