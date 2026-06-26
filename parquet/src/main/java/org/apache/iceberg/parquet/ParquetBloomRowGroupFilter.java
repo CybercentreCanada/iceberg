@@ -288,7 +288,7 @@ public class ParquetBloomRowGroupFilter {
         PrimitiveType primitiveType, T value, BloomFilter bloom, Type type) {
       long hashValue;
       switch (primitiveType.getPrimitiveTypeName()) {
-        case INT32: {
+        case INT32:
           boolean result;
           switch (type.typeId()) {
             case DECIMAL:
@@ -305,8 +305,7 @@ public class ParquetBloomRowGroupFilter {
               result = true; /* rows might match */
           }
           return result;
-        }
-        case INT64: {
+        case INT64:
           boolean result;
           switch (type.typeId()) {
             case DECIMAL:
@@ -324,7 +323,6 @@ public class ParquetBloomRowGroupFilter {
               result = true; /* rows might match */
           }
           return result;
-        }
         case FLOAT:
           hashValue = bloom.hash(((Number) value).floatValue());
           return bloom.findHash(hashValue);
@@ -332,7 +330,7 @@ public class ParquetBloomRowGroupFilter {
           hashValue = bloom.hash(((Number) value).doubleValue());
           return bloom.findHash(hashValue);
         case FIXED_LEN_BYTE_ARRAY:
-        case BINARY: {
+        case BINARY:
           boolean result;
           switch (type.typeId()) {
             case STRING:
@@ -365,7 +363,6 @@ public class ParquetBloomRowGroupFilter {
               result = true; /* rows might match */
           }
           return result;
-        }
         default:
           return true; /* rows might match */
       }
