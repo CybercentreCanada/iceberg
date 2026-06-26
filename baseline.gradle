@@ -107,7 +107,6 @@ subprojects {
           '-Xep:EqualsUnsafeCast:ERROR',
           '-Xep:EqualsUsingHashCode:ERROR',
           '-Xep:ExtendsObject:ERROR',
-          '-Xep:FallThrough:ERROR',
           // specific to Palantir
           '-Xep:FinalClass:OFF',
           '-Xep:Finalize:ERROR',
