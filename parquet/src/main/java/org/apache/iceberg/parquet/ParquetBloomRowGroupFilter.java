@@ -288,33 +288,43 @@ public class ParquetBloomRowGroupFilter {
         PrimitiveType primitiveType, T value, BloomFilter bloom, Type type) {
       long hashValue;
       switch (primitiveType.getPrimitiveTypeName()) {
-        case INT32:
+        case INT32: {
+          boolean result;
           switch (type.typeId()) {
             case DECIMAL:
               BigDecimal decimalValue = (BigDecimal) value;
               hashValue = bloom.hash(decimalValue.unscaledValue().intValue());
-              return bloom.findHash(hashValue);
+              result = bloom.findHash(hashValue);
+              break;
             case INTEGER:
             case DATE:
               hashValue = bloom.hash(((Number) value).intValue());
-              return bloom.findHash(hashValue);
+              result = bloom.findHash(hashValue);
+              break;
             default:
-              return true; /* rows might match */
-          } // fall through
-        case INT64:
+              result = true; /* rows might match */
+          }
+          return result;
+        }
+        case INT64: {
+          boolean result;
           switch (type.typeId()) {
             case DECIMAL:
               BigDecimal decimalValue = (BigDecimal) value;
               hashValue = bloom.hash(decimalValue.unscaledValue().longValue());
-              return bloom.findHash(hashValue);
+              result = bloom.findHash(hashValue);
+              break;
             case LONG:
             case TIME:
             case TIMESTAMP:
               hashValue = bloom.hash(((Number) value).longValue());
-              return bloom.findHash(hashValue);
+              result = bloom.findHash(hashValue);
+              break;
             default:
-              return true; /* rows might match */
-          } // fall through
+              result = true; /* rows might match */
+          }
+          return result;
+        }
         case FLOAT:
           hashValue = bloom.hash(((Number) value).floatValue());
           return bloom.findHash(hashValue);
@@ -322,15 +332,18 @@ public class ParquetBloomRowGroupFilter {
           hashValue = bloom.hash(((Number) value).doubleValue());
           return bloom.findHash(hashValue);
         case FIXED_LEN_BYTE_ARRAY:
-        case BINARY:
+        case BINARY: {
+          boolean result;
           switch (type.typeId()) {
             case STRING:
               hashValue = bloom.hash(Binary.fromCharSequence((CharSequence) value));
-              return bloom.findHash(hashValue);
+              result = bloom.findHash(hashValue);
+              break;
             case BINARY:
             case FIXED:
               hashValue = bloom.hash(Binary.fromConstantByteBuffer((ByteBuffer) value));
-              return bloom.findHash(hashValue);
+              result = bloom.findHash(hashValue);
+              break;
             case DECIMAL:
               DecimalLogicalTypeAnnotation metadata =
                   (DecimalLogicalTypeAnnotation) primitiveType.getLogicalTypeAnnotation();
@@ -341,13 +354,18 @@ public class ParquetBloomRowGroupFilter {
                   DecimalUtil.toReusedFixLengthBytes(
                       precision, scale, (BigDecimal) value, requiredBytes);
               hashValue = bloom.hash(Binary.fromConstantByteArray(binary));
-              return bloom.findHash(hashValue);
+              result = bloom.findHash(hashValue);
+              break;
             case UUID:
-              hashValue = bloom.hash(Binary.fromConstantByteArray(UUIDUtil.convert((UUID) value)));
-              return bloom.findHash(hashValue);
+              hashValue =
+                  bloom.hash(Binary.fromConstantByteArray(UUIDUtil.convert((UUID) value)));
+              result = bloom.findHash(hashValue);
+              break;
             default:
-              return true; /* rows might match */
-          } // fall through
+              result = true; /* rows might match */
+          }
+          return result;
+        }
         default:
           return true; /* rows might match */
       }
