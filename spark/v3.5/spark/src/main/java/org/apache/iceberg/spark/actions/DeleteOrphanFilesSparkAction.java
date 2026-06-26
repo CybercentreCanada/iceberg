@@ -523,8 +523,8 @@ public class DeleteOrphanFilesSparkAction extends BaseSparkAction<DeleteOrphanFi
     }
   }
 
-  @VisibleForTesting
-  static class FindOrphanFiles implements MapPartitionsFunction<Tuple2<FileURI, FileURI>, String> {
+  private static class FindOrphanFiles
+      implements MapPartitionsFunction<Tuple2<FileURI, FileURI>, String> {
 
     private final PrefixMismatchMode mode;
     private final SetAccumulator<Pair<String, String>> conflicts;

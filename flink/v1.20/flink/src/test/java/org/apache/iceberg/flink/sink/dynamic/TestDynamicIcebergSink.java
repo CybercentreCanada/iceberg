@@ -25,6 +25,7 @@ import static org.assertj.core.api.Assertions.fail;
 import java.io.IOException;
 import java.io.Serializable;
 import java.time.Duration;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;

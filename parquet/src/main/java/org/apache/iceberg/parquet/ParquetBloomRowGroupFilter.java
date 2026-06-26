@@ -301,6 +301,7 @@ public class ParquetBloomRowGroupFilter {
             default:
               return true; /* rows might match */
           }
+          return true; /* checkstyle */
         case INT64:
           switch (type.typeId()) {
             case DECIMAL:
@@ -315,6 +316,7 @@ public class ParquetBloomRowGroupFilter {
             default:
               return true; /* rows might match */
           }
+          return true; /* checkstyle */
         case FLOAT:
           hashValue = bloom.hash(((Number) value).floatValue());
           return bloom.findHash(hashValue);
@@ -348,6 +350,7 @@ public class ParquetBloomRowGroupFilter {
             default:
               return true; /* rows might match */
           }
+          return true; /* checkstyle */
         default:
           return true; /* rows might match */
       }

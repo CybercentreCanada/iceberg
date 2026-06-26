@@ -86,7 +86,6 @@ class TableMetadataCache {
       Clock cacheRefreshClock) {
     this.catalog = catalog;
     this.refreshMs = refreshMs;
-    this.cacheRefreshClock = cacheRefreshClock;
     this.inputSchemasPerTableCacheMaximumSize = inputSchemasPerTableCacheMaximumSize;
     this.tableCache = new LRUCache<>(maximumSize);
     this.caseSensitive = caseSensitive;
