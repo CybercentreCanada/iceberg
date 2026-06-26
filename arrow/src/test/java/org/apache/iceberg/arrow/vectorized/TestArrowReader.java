@@ -19,7 +19,9 @@
 package org.apache.iceberg.arrow.vectorized;
 
 import static org.apache.iceberg.Files.localInput;
+import static org.apache.parquet.schema.Types.primitive;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.File;
 import java.io.IOException;
@@ -40,6 +42,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.apache.arrow.vector.BigIntVector;
 import org.apache.arrow.vector.BitVector;
 import org.apache.arrow.vector.DateDayVector;
@@ -61,6 +64,7 @@ import org.apache.arrow.vector.types.Types.MinorType;
 import org.apache.arrow.vector.types.pojo.ArrowType;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.FieldType;
+import org.apache.hadoop.fs.Path;
 import org.apache.iceberg.DataFile;
 import org.apache.iceberg.DataFiles;
 import org.apache.iceberg.FileFormat;
@@ -88,9 +92,20 @@ import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
 import org.apache.iceberg.types.Types;
 import org.apache.iceberg.util.UUIDUtil;
+import org.apache.parquet.example.data.Group;
+import org.apache.parquet.example.data.simple.SimpleGroupFactory;
+import org.apache.parquet.hadoop.ParquetWriter;
+import org.apache.parquet.hadoop.example.ExampleParquetWriter;
+import org.apache.parquet.schema.LogicalTypeAnnotation;
+import org.apache.parquet.schema.MessageType;
+import org.apache.parquet.schema.PrimitiveType;
+import org.apache.parquet.schema.Type;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 /**
  * Test cases for {@link ArrowReader}.
@@ -290,6 +305,192 @@ public class TestArrowReader {
     // Call hasNext() 2 extra times.
     readAndCheckHasNextIsIdempotent(
         scan, NUM_ROWS_PER_MONTH, 12 * NUM_ROWS_PER_MONTH, 2, ALL_COLUMNS);
+  }
+
+  /**
+   * Tests that VectorizedArrowReader correctly reads Parquet files with TIMESTAMP_MILLIS logical
+   * type. The test writes a Parquet file with millisecond-precision timestamps using the low-level
+   * Parquet API, then reads it via VectorizedArrowReader.
+   */
+  @Test
+  public void testTimestampMillisAreReadCorrectly() throws Exception {
+    tables = new HadoopTables();
+    Schema schema =
+        new Schema(Types.NestedField.required(1, "ts_millis", Types.TimestampType.withZone()));
+
+    Table table = tables.create(schema, tableLocation);
+
+    File testFile = new File(tempDir, "timestamp-millis-test.parquet");
+    List<Long> millisValues = Lists.newArrayList(1609459200000L, 1640995200000L, 1672531200000L);
+
+    MessageType parquetSchema =
+        new MessageType(
+            "test",
+            primitive(PrimitiveType.PrimitiveTypeName.INT64, Type.Repetition.REQUIRED)
+                .as(
+                    LogicalTypeAnnotation.timestampType(
+                        true, LogicalTypeAnnotation.TimeUnit.MILLIS))
+                .id(1)
+                .named("ts_millis"));
+
+    try (ParquetWriter<Group> writer =
+        ExampleParquetWriter.builder(new Path(testFile.toURI())).withType(parquetSchema).build()) {
+
+      SimpleGroupFactory factory = new SimpleGroupFactory(parquetSchema);
+
+      for (Long millis : millisValues) {
+        Group group = factory.newGroup();
+        group.add("ts_millis", millis);
+        writer.write(group);
+      }
+    }
+
+    DataFile dataFile =
+        DataFiles.builder(PartitionSpec.unpartitioned())
+            .withPath(testFile.getAbsolutePath())
+            .withFileSizeInBytes(testFile.length())
+            .withFormat(FileFormat.PARQUET)
+            .withRecordCount(millisValues.size())
+            .build();
+
+    table.newAppend().appendFile(dataFile).commit();
+
+    int totalRowsRead = 0;
+    int rowIndex = 0;
+    try (VectorizedTableScanIterable vectorizedReader =
+        new VectorizedTableScanIterable(table.newScan(), 1024, false)) {
+      for (ColumnarBatch batch : vectorizedReader) {
+        VectorSchemaRoot root = batch.createVectorSchemaRootFromVectors();
+
+        FieldVector tsVector = root.getVector("ts_millis");
+        assertThat(tsVector)
+            .as("TIMESTAMP_MILLIS should be read as BigIntVector")
+            .isInstanceOf(BigIntVector.class);
+
+        BigIntVector bigIntVector = (BigIntVector) tsVector;
+
+        for (int i = 0; i < root.getRowCount(); i++) {
+          long actualMicros = bigIntVector.get(i);
+          long expectedMicros = millisValues.get(rowIndex) * 1000L;
+
+          assertThat(actualMicros)
+              .as("Row %d: timestamp should be converted to microseconds", rowIndex)
+              .isEqualTo(expectedMicros);
+
+          rowIndex++;
+        }
+
+        totalRowsRead += root.getRowCount();
+        root.close();
+      }
+    }
+
+    assertThat(totalRowsRead).as("Should read all rows").isEqualTo(millisValues.size());
+  }
+
+  @ParameterizedTest
+  @MethodSource("rejectedUnsignedIntegerCases")
+  public void testUnsignedIntegerColumnThrowsException(
+      int unsignedBitWidth,
+      PrimitiveType.PrimitiveTypeName physicalType,
+      Schema schema,
+      String expectedMessage)
+      throws Exception {
+    Table table = createSingleRowUnsignedIntTable(schema, physicalType, unsignedBitWidth, 100L);
+
+    assertThatThrownBy(
+            () -> {
+              try (VectorizedTableScanIterable vectorizedReader =
+                  new VectorizedTableScanIterable(table.newScan(), 1024, false)) {
+                for (ColumnarBatch batch : vectorizedReader) {
+                  batch.createVectorSchemaRootFromVectors().close();
+                }
+              }
+            })
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining(expectedMessage);
+  }
+
+  @ParameterizedTest
+  @MethodSource("acceptedUnsignedSmallIntegerCases")
+  public void testUnsignedSmallIntegerColumnRoundtrips(int unsignedBitWidth, int value)
+      throws Exception {
+    Schema schema = new Schema(Types.NestedField.optional(1, "col", Types.IntegerType.get()));
+    Table table =
+        createSingleRowUnsignedIntTable(
+            schema, PrimitiveType.PrimitiveTypeName.INT32, unsignedBitWidth, value);
+
+    int totalRows = 0;
+    try (VectorizedTableScanIterable vectorizedReader =
+        new VectorizedTableScanIterable(table.newScan(), 1024, false)) {
+      for (ColumnarBatch batch : vectorizedReader) {
+        VectorSchemaRoot root = batch.createVectorSchemaRootFromVectors();
+        assertThat(((IntVector) root.getVector("col")).get(0))
+            .as("UINT%d value should round-trip through int", unsignedBitWidth)
+            .isEqualTo(value);
+        totalRows += root.getRowCount();
+        root.close();
+      }
+    }
+
+    assertThat(totalRows).isEqualTo(1);
+  }
+
+  private static Stream<Arguments> rejectedUnsignedIntegerCases() {
+    return Stream.of(
+        Arguments.of(
+            32,
+            PrimitiveType.PrimitiveTypeName.INT32,
+            new Schema(Types.NestedField.optional(1, "col", Types.IntegerType.get())),
+            "Cannot read UINT32 as an int value"),
+        Arguments.of(
+            64,
+            PrimitiveType.PrimitiveTypeName.INT64,
+            new Schema(Types.NestedField.optional(1, "col", Types.LongType.get())),
+            "Cannot read UINT64 as a long value"));
+  }
+
+  private static Stream<Arguments> acceptedUnsignedSmallIntegerCases() {
+    return Stream.of(Arguments.of(8, 250), Arguments.of(16, 50000));
+  }
+
+  private Table createSingleRowUnsignedIntTable(
+      Schema schema, PrimitiveType.PrimitiveTypeName physicalType, int unsignedBitWidth, long value)
+      throws IOException {
+    tables = new HadoopTables();
+    Table table = tables.create(schema, tempDir.toURI() + "/uint" + unsignedBitWidth);
+
+    MessageType parquetSchema =
+        new MessageType(
+            "test",
+            primitive(physicalType, Type.Repetition.OPTIONAL)
+                .as(LogicalTypeAnnotation.intType(unsignedBitWidth, false))
+                .id(1)
+                .named("col"));
+
+    File testFile =
+        new File(tempDir, "unsigned-int" + unsignedBitWidth + "-" + System.nanoTime() + ".parquet");
+    try (ParquetWriter<Group> writer =
+        ExampleParquetWriter.builder(new Path(testFile.toURI())).withType(parquetSchema).build()) {
+      SimpleGroupFactory factory = new SimpleGroupFactory(parquetSchema);
+      Group group = factory.newGroup();
+      if (physicalType == PrimitiveType.PrimitiveTypeName.INT64) {
+        group.add("col", value);
+      } else {
+        group.add("col", (int) value);
+      }
+      writer.write(group);
+    }
+
+    DataFile dataFile =
+        DataFiles.builder(PartitionSpec.unpartitioned())
+            .withPath(testFile.getAbsolutePath())
+            .withFileSizeInBytes(testFile.length())
+            .withFormat(FileFormat.PARQUET)
+            .withRecordCount(1)
+            .build();
+    table.newAppend().appendFile(dataFile).commit();
+    return table;
   }
 
   /**

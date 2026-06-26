@@ -25,22 +25,31 @@ import org.apache.iceberg.FileScanTask;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.relocated.com.google.common.base.MoreObjects;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
+import org.apache.iceberg.relocated.com.google.common.collect.ImmutableList;
+import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.rest.PlanStatus;
+import org.apache.iceberg.rest.credentials.Credential;
 
 public class PlanTableScanResponse extends BaseScanTaskResponse {
   private final PlanStatus planStatus;
   private final String planId;
+  private final ErrorResponse errorResponse;
+  private final List<Credential> credentials;
 
   private PlanTableScanResponse(
       PlanStatus planStatus,
       String planId,
+      ErrorResponse errorResponse,
       List<String> planTasks,
       List<FileScanTask> fileScanTasks,
       List<DeleteFile> deleteFiles,
-      Map<Integer, PartitionSpec> specsById) {
+      Map<Integer, PartitionSpec> specsById,
+      List<Credential> credentials) {
     super(planTasks, fileScanTasks, deleteFiles, specsById);
     this.planStatus = planStatus;
     this.planId = planId;
+    this.errorResponse = errorResponse;
+    this.credentials = credentials;
     validate();
   }
 
@@ -50,6 +59,14 @@ public class PlanTableScanResponse extends BaseScanTaskResponse {
 
   public String planId() {
     return planId;
+  }
+
+  public ErrorResponse errorResponse() {
+    return errorResponse;
+  }
+
+  public List<Credential> credentials() {
+    return credentials != null ? credentials : ImmutableList.of();
   }
 
   @Override
@@ -76,6 +93,10 @@ public class PlanTableScanResponse extends BaseScanTaskResponse {
         planStatus() == PlanStatus.COMPLETED || (planTasks() == null && fileScanTasks() == null),
         "Invalid response: tasks can only be defined when status is '%s'",
         PlanStatus.COMPLETED.status());
+    Preconditions.checkArgument(
+        planStatus() == PlanStatus.FAILED || errorResponse() == null,
+        "Invalid response: error can only be defined when status is '%s'",
+        PlanStatus.FAILED.status());
     if (null != planId()) {
       Preconditions.checkArgument(
           planStatus() == PlanStatus.SUBMITTED || planStatus() == PlanStatus.COMPLETED,
@@ -98,6 +119,15 @@ public class PlanTableScanResponse extends BaseScanTaskResponse {
   public static class Builder extends BaseScanTaskResponse.Builder<Builder, PlanTableScanResponse> {
     private PlanStatus planStatus;
     private String planId;
+    private ErrorResponse errorResponse;
+    private final List<Credential> credentials = Lists.newArrayList();
+
+    /**
+     * @deprecated since 1.11.0, visibility will be reduced in 1.12.0; use {@link
+     *     PlanTableScanResponse#builder()} instead.
+     */
+    @Deprecated
+    public Builder() {}
 
     /**
      * @deprecated since 1.11.0, visibility will be reduced in 1.12.0; use {@link
@@ -116,10 +146,27 @@ public class PlanTableScanResponse extends BaseScanTaskResponse {
       return this;
     }
 
+    public Builder withErrorResponse(ErrorResponse response) {
+      this.errorResponse = response;
+      return this;
+    }
+
+    public Builder withCredentials(List<Credential> credentialsToAdd) {
+      credentials.addAll(credentialsToAdd);
+      return this;
+    }
+
     @Override
     public PlanTableScanResponse build() {
       return new PlanTableScanResponse(
-          planStatus, planId, planTasks(), fileScanTasks(), deleteFiles(), specsById());
+          planStatus,
+          planId,
+          errorResponse,
+          planTasks(),
+          fileScanTasks(),
+          deleteFiles(),
+          specsById(),
+          credentials);
     }
   }
 }

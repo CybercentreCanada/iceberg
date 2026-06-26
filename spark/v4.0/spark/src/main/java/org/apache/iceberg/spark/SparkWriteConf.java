@@ -33,6 +33,8 @@ import static org.apache.iceberg.TableProperties.ORC_COMPRESSION;
 import static org.apache.iceberg.TableProperties.ORC_COMPRESSION_STRATEGY;
 import static org.apache.iceberg.TableProperties.PARQUET_COMPRESSION;
 import static org.apache.iceberg.TableProperties.PARQUET_COMPRESSION_LEVEL;
+import static org.apache.iceberg.TableProperties.PARQUET_SHRED_VARIANTS;
+import static org.apache.iceberg.TableProperties.PARQUET_VARIANT_BUFFER_SIZE;
 import static org.apache.spark.sql.connector.write.RowLevelOperation.Command.DELETE;
 
 import java.util.Locale;
@@ -42,6 +44,7 @@ import org.apache.iceberg.DistributionMode;
 import org.apache.iceberg.FileFormat;
 import org.apache.iceberg.IsolationLevel;
 import org.apache.iceberg.SnapshotSummary;
+import org.apache.iceberg.SortOrder;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.TableUtil;
@@ -50,12 +53,14 @@ import org.apache.iceberg.exceptions.ValidationException;
 import org.apache.iceberg.relocated.com.google.common.annotations.VisibleForTesting;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
+import org.apache.iceberg.util.PropertyUtil;
 import org.apache.spark.sql.RuntimeConfig;
 import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.connector.write.RowLevelOperation.Command;
 import org.apache.spark.sql.internal.SQLConf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import scala.collection.JavaConverters;
 
 /**
  * A class for common Iceberg configs for Spark writes.
@@ -162,6 +167,25 @@ public class SparkWriteConf {
     return outputSpecId;
   }
 
+  public int outputSortOrderId(SparkWriteRequirements writeRequirements) {
+    Integer explicitId =
+        confParser.intConf().option(SparkWriteOptions.OUTPUT_SORT_ORDER_ID).parseOptional();
+
+    if (explicitId != null) {
+      Preconditions.checkArgument(
+          table.sortOrders().containsKey(explicitId),
+          "Cannot use output sort order id %s because the table does not contain a sort order with that id",
+          explicitId);
+      return explicitId;
+    }
+
+    if (writeRequirements.hasOrdering()) {
+      return table.sortOrder().orderId();
+    }
+
+    return SortOrder.unsorted().orderId();
+  }
+
   public FileFormat dataFileFormat() {
     String valueAsString =
         confParser
@@ -252,13 +276,15 @@ public class SparkWriteConf {
   public Map<String, String> extraSnapshotMetadata() {
     Map<String, String> extraSnapshotMetadata = Maps.newHashMap();
 
-    writeOptions.forEach(
-        (key, value) -> {
-          if (key.startsWith(SnapshotSummary.EXTRA_METADATA_PREFIX)) {
-            extraSnapshotMetadata.put(
-                key.substring(SnapshotSummary.EXTRA_METADATA_PREFIX.length()), value);
-          }
-        });
+    // Add session configuration properties with SNAPSHOT_PROPERTY_PREFIX if necessary
+    extraSnapshotMetadata.putAll(
+        PropertyUtil.propertiesWithPrefix(
+            JavaConverters.mapAsJavaMap(sessionConf.getAll()),
+            SparkSQLProperties.SNAPSHOT_PROPERTY_PREFIX));
+
+    // Add write options, overriding session configuration if necessary
+    extraSnapshotMetadata.putAll(
+        PropertyUtil.propertiesWithPrefix(writeOptions, SnapshotSummary.EXTRA_METADATA_PREFIX));
 
     return extraSnapshotMetadata;
   }
@@ -505,6 +531,14 @@ public class SparkWriteConf {
         if (parquetCompressionLevel != null) {
           writeProperties.put(PARQUET_COMPRESSION_LEVEL, parquetCompressionLevel);
         }
+        boolean shouldShredVariants = shredVariants();
+        writeProperties.put(PARQUET_SHRED_VARIANTS, String.valueOf(shouldShredVariants));
+
+        // Add variant shredding configuration properties
+        if (shouldShredVariants) {
+          writeProperties.put(
+              PARQUET_VARIANT_BUFFER_SIZE, String.valueOf(variantInferenceBufferSize()));
+        }
         break;
 
       case AVRO:
@@ -723,6 +757,26 @@ public class SparkWriteConf {
         .option(SparkWriteOptions.DELETE_GRANULARITY)
         .tableProperty(TableProperties.DELETE_GRANULARITY)
         .defaultValue(DeleteGranularity.FILE)
+        .parse();
+  }
+
+  public boolean shredVariants() {
+    return confParser
+        .booleanConf()
+        .option(SparkWriteOptions.SHRED_VARIANTS)
+        .sessionConf(SparkSQLProperties.SHRED_VARIANTS)
+        .tableProperty(TableProperties.PARQUET_SHRED_VARIANTS)
+        .defaultValue(TableProperties.PARQUET_SHRED_VARIANTS_DEFAULT)
+        .parse();
+  }
+
+  public int variantInferenceBufferSize() {
+    return confParser
+        .intConf()
+        .option(SparkWriteOptions.VARIANT_INFERENCE_BUFFER_SIZE)
+        .sessionConf(SparkSQLProperties.VARIANT_INFERENCE_BUFFER_SIZE)
+        .tableProperty(TableProperties.PARQUET_VARIANT_BUFFER_SIZE)
+        .defaultValue(TableProperties.PARQUET_VARIANT_BUFFER_SIZE_DEFAULT)
         .parse();
   }
 }

@@ -21,13 +21,16 @@ package org.apache.iceberg.spark.source;
 import static org.apache.hadoop.hive.conf.HiveConf.ConfVars.METASTOREURIS;
 import static org.apache.iceberg.spark.source.SparkSQLExecutionHelper.lastExecutedMetricValue;
 import static org.apache.iceberg.types.Types.NestedField.required;
+import static org.apache.spark.sql.types.DataTypes.IntegerType;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assumptions.assumeThat;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
+import javax.annotation.Nonnull;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
@@ -68,8 +71,11 @@ import org.apache.iceberg.parquet.ParquetSchemaUtil;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.relocated.com.google.common.collect.Sets;
+import org.apache.iceberg.spark.ImmutableParquetBatchReadConf;
+import org.apache.iceberg.spark.ParquetBatchReadConf;
 import org.apache.iceberg.spark.SparkSchemaUtil;
 import org.apache.iceberg.spark.SparkStructLike;
+import org.apache.iceberg.spark.TestBase;
 import org.apache.iceberg.spark.data.RandomData;
 import org.apache.iceberg.spark.data.SparkParquetWriters;
 import org.apache.iceberg.spark.source.metrics.NumDeletes;
@@ -86,7 +92,7 @@ import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.catalyst.InternalRow;
 import org.apache.spark.sql.internal.SQLConf;
 import org.apache.spark.sql.types.StructType;
-import org.jetbrains.annotations.NotNull;
+import org.apache.spark.sql.vectorized.ColumnarBatch;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -132,6 +138,7 @@ public class TestSparkReaderDeletes extends DeleteReadTests {
             .config("spark.ui.liveUpdate.period", 0)
             .config(SQLConf.PARTITION_OVERWRITE_MODE().key(), "dynamic")
             .config("spark.hadoop." + METASTOREURIS.varname, hiveConf.get(METASTOREURIS.varname))
+            .config(TestBase.DISABLE_UI)
             .enableHiveSupport()
             .getOrCreate();
 
@@ -324,7 +331,8 @@ public class TestSparkReaderDeletes extends DeleteReadTests {
 
     for (CombinedScanTask task : tasks) {
       try (EqualityDeleteRowReader reader =
-          new EqualityDeleteRowReader(task, table, null, table.schema(), false, true)) {
+          new EqualityDeleteRowReader(
+              task, table, table.io(), table.schema(), table.schema(), false, true)) {
         while (reader.next()) {
           actualRowSet.add(
               new InternalRowWrapper(
@@ -633,6 +641,61 @@ public class TestSparkReaderDeletes extends DeleteReadTests {
     assertThat(rowSet(tblName, tbl, "*")).hasSize(193);
   }
 
+  @TestTemplate
+  public void testEqualityDeleteWithDifferentScanAndDeleteColumns() throws IOException {
+    assumeThat(format).isEqualTo(FileFormat.PARQUET);
+    initDateTable();
+
+    Schema deleteRowSchema = dateTable.schema().select("dt");
+    Record dataDelete = GenericRecord.create(deleteRowSchema);
+    List<Record> dataDeletes =
+        Lists.newArrayList(
+            dataDelete.copy("dt", LocalDate.parse("2021-09-01")),
+            dataDelete.copy("dt", LocalDate.parse("2021-09-02")),
+            dataDelete.copy("dt", LocalDate.parse("2021-09-03")));
+
+    DeleteFile eqDeletes =
+        FileHelpers.writeDeleteFile(
+            dateTable,
+            Files.localOutput(File.createTempFile("junit", null, temp.toFile())),
+            TestHelpers.Row.of(0),
+            dataDeletes.subList(0, 3),
+            deleteRowSchema);
+
+    dateTable.newRowDelta().addDeletes(eqDeletes).commit();
+
+    CloseableIterable<CombinedScanTask> tasks =
+        TableScanUtil.planTasks(
+            dateTable.newScan().planFiles(),
+            TableProperties.METADATA_SPLIT_SIZE_DEFAULT,
+            TableProperties.SPLIT_LOOKBACK_DEFAULT,
+            TableProperties.SPLIT_OPEN_FILE_COST_DEFAULT);
+
+    ParquetBatchReadConf conf = ImmutableParquetBatchReadConf.builder().batchSize(7).build();
+
+    for (CombinedScanTask task : tasks) {
+      try (BatchDataReader reader =
+          new BatchDataReader(
+              // expected column is id, while the equality filter column is dt
+              dateTable,
+              dateTable.io(),
+              task,
+              dateTable.schema(),
+              dateTable.schema().select("id"),
+              false,
+              conf,
+              null,
+              true)) {
+        while (reader.next()) {
+          ColumnarBatch columnarBatch = reader.get();
+          int numOfCols = columnarBatch.numCols();
+          assertThat(numOfCols).as("Number of columns").isEqualTo(1);
+          assertThat(columnarBatch.column(0).dataType()).as("Column type").isEqualTo(IntegerType);
+        }
+      }
+    }
+  }
+
   private static final Schema PROJECTION_SCHEMA =
       new Schema(
           required(1, "id", Types.IntegerType.get()),
@@ -673,7 +736,7 @@ public class TestSparkReaderDeletes extends DeleteReadTests {
     return set;
   }
 
-  @NotNull
+  @Nonnull
   private static List recordsWithDeletedColumn() {
     List records = Lists.newArrayList();
 

@@ -20,9 +20,11 @@ package org.apache.iceberg.gcp.bigquery;
 
 import static org.apache.iceberg.CatalogUtil.ICEBERG_CATALOG_TYPE;
 import static org.apache.iceberg.CatalogUtil.ICEBERG_CATALOG_TYPE_BIGQUERY;
-import static org.apache.iceberg.gcp.bigquery.BigQueryMetastoreCatalog.PROJECT_ID;
+import static org.apache.iceberg.gcp.bigquery.BigQueryProperties.PROJECT_ID;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import org.apache.iceberg.CatalogProperties;
@@ -144,10 +146,6 @@ public class TestBigQueryCatalog extends CatalogTests<BigQueryMetastoreCatalog> 
   @Test
   public void testCreateTableWithDefaultColumnValue() {}
 
-  @Disabled("BigQuery Metastore does not support multi layer namespaces")
-  @Test
-  public void testLoadMetadataTable() {}
-
   @Disabled("BigQuery Metastore does not support rename tables")
   @Test
   public void testRenameTable() {
@@ -170,5 +168,44 @@ public class TestBigQueryCatalog extends CatalogTests<BigQueryMetastoreCatalog> 
   @Test
   public void testRenameTableMissingSourceTable() {
     super.testRenameTableMissingSourceTable();
+  }
+
+  @Disabled("BigQuery Metastore does not support rename tables")
+  @Test
+  public void createTableInUniqueLocation() {
+    super.createTableInUniqueLocation();
+  }
+
+  @Disabled("BigQuery Metastore does not support rename tables")
+  @Test
+  public void dropAfterRenameDoesntCorruptTable() throws IOException {
+    super.dropAfterRenameDoesntCorruptTable();
+  }
+
+  @Test
+  public void testIsValidIdentifierWithValidSingleLevelNamespace() {
+    assertThat(catalog.isValidIdentifier(TableIdentifier.of("dataset1", "table1"))).isTrue();
+  }
+
+  @Test
+  public void testIsValidIdentifierWithInvalidMultiLevelNamespace() {
+    assertThat(
+            catalog.isValidIdentifier(
+                TableIdentifier.of(Namespace.of("level1", "level2"), "table1")))
+        .isFalse();
+  }
+
+  @Test
+  public void testIsValidIdentifierWithThreeLevelNamespace() {
+    assertThat(
+            catalog.isValidIdentifier(
+                TableIdentifier.of(Namespace.of("level1", "level2", "level3"), "table1")))
+        .isFalse();
+  }
+
+  @Test
+  public void testIsValidIdentifierWithEmptyNamespace() {
+    assertThat(catalog.isValidIdentifier(TableIdentifier.of(Namespace.empty(), "table1")))
+        .isFalse();
   }
 }

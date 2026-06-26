@@ -35,10 +35,12 @@ import org.apache.iceberg.Parameters;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableProperties;
 import org.apache.iceberg.common.DynFields;
+import org.apache.iceberg.data.RegistryBasedFileWriterFactory;
 import org.apache.iceberg.flink.FlinkWriteConf;
 import org.apache.iceberg.flink.FlinkWriteOptions;
 import org.apache.iceberg.flink.SimpleDataUtil;
 import org.apache.iceberg.io.BaseTaskWriter;
+import org.apache.iceberg.io.FileWriterFactory;
 import org.apache.iceberg.io.TaskWriter;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
 import org.junit.jupiter.api.BeforeEach;
@@ -236,22 +238,22 @@ public class TestCompressionSettings {
       testHarness.processElement(SimpleDataUtil.createRowData(1, "hello"), 1);
 
       testHarness.prepareSnapshotPreBarrier(1L);
-      DynFields.BoundField<IcebergStreamWriter> operatorField =
+      DynFields.BoundField<IcebergStreamWriter<?>> operatorField =
           DynFields.builder()
               .hiddenImpl(testHarness.getOperatorFactory().getClass(), "operator")
               .build(testHarness.getOperatorFactory());
-      DynFields.BoundField<TaskWriter> writerField =
+      DynFields.BoundField<TaskWriter<?>> writerField =
           DynFields.builder()
               .hiddenImpl(IcebergStreamWriter.class, "writer")
               .build(operatorField.get());
-      DynFields.BoundField<FlinkAppenderFactory> appenderField =
+      DynFields.BoundField<FileWriterFactory<?>> writerFactoryField =
           DynFields.builder()
-              .hiddenImpl(BaseTaskWriter.class, "appenderFactory")
+              .hiddenImpl(BaseTaskWriter.class, "writerFactory")
               .build(writerField.get());
       DynFields.BoundField<Map<String, String>> propsField =
           DynFields.builder()
-              .hiddenImpl(FlinkAppenderFactory.class, "props")
-              .build(appenderField.get());
+              .hiddenImpl(RegistryBasedFileWriterFactory.class, "writerProperties")
+              .build(writerFactoryField.get());
       return propsField.get();
     }
   }

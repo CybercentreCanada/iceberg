@@ -48,7 +48,6 @@ import org.apache.iceberg.rest.HTTPRequest;
 import org.apache.iceberg.rest.ImmutableHTTPRequest;
 import org.apache.iceberg.rest.RESTClient;
 import org.apache.iceberg.rest.RESTUtil;
-import org.apache.iceberg.rest.ResourcePaths;
 import org.apache.iceberg.rest.responses.OAuthTokenResponse;
 import org.apache.iceberg.util.JsonUtil;
 import org.apache.iceberg.util.Pair;
@@ -186,7 +185,12 @@ public class OAuth2Util {
       }
 
       return fetchToken(
-          client, Map.of(), config.credential(), config.scope(), config.oauth2ServerUri());
+          client,
+          Map.of(),
+          config.credential(),
+          config.scope(),
+          config.oauth2ServerUri(),
+          ImmutableMap.of());
     }
   }
 
@@ -221,59 +225,6 @@ public class OAuth2Util {
     return response;
   }
 
-  /**
-   * @deprecated since 1.10.0, will be removed in 1.11.0; use {@link
-   *     OAuth2Util#exchangeToken(RESTClient, Map, String, String, String, String, String, String,
-   *     Map)} instead.
-   */
-  @Deprecated
-  public static OAuthTokenResponse exchangeToken(
-      RESTClient client,
-      Map<String, String> headers,
-      String subjectToken,
-      String subjectTokenType,
-      String actorToken,
-      String actorTokenType,
-      String scope) {
-    return exchangeToken(
-        client,
-        headers,
-        subjectToken,
-        subjectTokenType,
-        actorToken,
-        actorTokenType,
-        scope,
-        ResourcePaths.tokens(),
-        ImmutableMap.of());
-  }
-
-  /**
-   * @deprecated since 1.10.0, will be removed in 1.11.0; use {@link
-   *     OAuth2Util#exchangeToken(RESTClient, Map, String, String, String, String, String, String,
-   *     Map)} instead.
-   */
-  @Deprecated
-  public static OAuthTokenResponse exchangeToken(
-      RESTClient client,
-      Map<String, String> headers,
-      String subjectToken,
-      String subjectTokenType,
-      String actorToken,
-      String actorTokenType,
-      String scope,
-      String oauth2ServerUri) {
-    return exchangeToken(
-        client,
-        headers,
-        subjectToken,
-        subjectTokenType,
-        actorToken,
-        actorTokenType,
-        scope,
-        oauth2ServerUri,
-        ImmutableMap.of());
-  }
-
   public static OAuthTokenResponse fetchToken(
       RESTClient client,
       Map<String, String> headers,
@@ -297,33 +248,6 @@ public class OAuth2Util {
     response.validate();
 
     return response;
-  }
-
-  /**
-   * @deprecated since 1.10.0, will be removed in 1.11.0; use {@link
-   *     OAuth2Util#fetchToken(RESTClient, Map, String, String, String, Map)} instead.
-   */
-  @Deprecated
-  public static OAuthTokenResponse fetchToken(
-      RESTClient client, Map<String, String> headers, String credential, String scope) {
-
-    return fetchToken(
-        client, headers, credential, scope, ResourcePaths.tokens(), ImmutableMap.of());
-  }
-
-  /**
-   * @deprecated since 1.10.0, will be removed in 1.11.0; use {@link
-   *     OAuth2Util#fetchToken(RESTClient, Map, String, String, String, Map)} instead.
-   */
-  @Deprecated
-  public static OAuthTokenResponse fetchToken(
-      RESTClient client,
-      Map<String, String> headers,
-      String credential,
-      String scope,
-      String oauth2ServerUri) {
-
-    return fetchToken(client, headers, credential, scope, oauth2ServerUri, ImmutableMap.of());
   }
 
   private static Map<String, String> tokenExchangeRequest(
@@ -605,6 +529,7 @@ public class OAuth2Util {
                 .from(config())
                 .token(response.token())
                 .tokenType(response.issuedTokenType())
+                .expiresAtMillis(OAuth2Util.expiresAtMillis(response.token()))
                 .build();
         Map<String, String> currentHeaders = this.headers;
         this.headers = RESTUtil.merge(currentHeaders, authHeaders(config.token()));
@@ -647,7 +572,8 @@ public class OAuth2Util {
         return refreshToken(
             client, config, basicHeaders, token(), tokenType(), optionalOAuthParams());
       } else {
-        return fetchToken(client, Map.of(), credential(), scope(), oauth2ServerUri());
+        return fetchToken(
+            client, Map.of(), credential(), scope(), oauth2ServerUri(), ImmutableMap.of());
       }
     }
 
@@ -702,6 +628,7 @@ public class OAuth2Util {
                   .from(parent.config())
                   .token(token)
                   .tokenType(OAuth2Properties.ACCESS_TOKEN_TYPE)
+                  .expiresAtMillis(OAuth2Util.expiresAtMillis(token))
                   .build());
 
       long startTimeMillis = System.currentTimeMillis();
@@ -783,6 +710,7 @@ public class OAuth2Util {
                   .token(response.token())
                   .tokenType(issuedTokenType)
                   .credential(credential)
+                  .expiresAtMillis(OAuth2Util.expiresAtMillis(response.token()))
                   .build());
 
       Long expiresAtMillis = session.expiresAtMillis();

@@ -27,6 +27,7 @@ import java.time.OffsetDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -41,6 +42,7 @@ import org.apache.iceberg.DataFile;
 import org.apache.iceberg.DeleteFile;
 import org.apache.iceberg.RowDelta;
 import org.apache.iceberg.Snapshot;
+import org.apache.iceberg.SnapshotAncestryValidator;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.catalog.TableIdentifier;
@@ -52,9 +54,10 @@ import org.apache.iceberg.connect.events.Event;
 import org.apache.iceberg.connect.events.StartCommit;
 import org.apache.iceberg.connect.events.TableReference;
 import org.apache.iceberg.exceptions.NoSuchTableException;
-import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
 import org.apache.iceberg.relocated.com.google.common.collect.Maps;
+import org.apache.iceberg.relocated.com.google.common.collect.Streams;
 import org.apache.iceberg.relocated.com.google.common.util.concurrent.ThreadFactoryBuilder;
+import org.apache.iceberg.util.SnapshotUtil;
 import org.apache.iceberg.util.Tasks;
 import org.apache.kafka.clients.admin.MemberDescription;
 import org.apache.kafka.connect.errors.ConnectException;
@@ -67,6 +70,7 @@ class Coordinator extends Channel {
   private static final Logger LOG = LoggerFactory.getLogger(Coordinator.class);
   private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final String COMMIT_ID_SNAPSHOT_PROP = "kafka.connect.commit-id";
+  private static final String TASK_ID_SNAPSHOT_PROP = "kafka.connect.task-id";
   private static final String VALID_THROUGH_TS_SNAPSHOT_PROP = "kafka.connect.valid-through-ts";
   private static final Duration POLL_DURATION = Duration.ofSeconds(1);
 
@@ -76,6 +80,8 @@ class Coordinator extends Channel {
   private final String snapshotOffsetsProp;
   private final ExecutorService exec;
   private final CommitState commitState;
+  private volatile boolean terminated;
+  private final String taskId;
 
   Coordinator(
       Catalog catalog,
@@ -105,6 +111,7 @@ class Coordinator extends Channel {
                 .setNameFormat("iceberg-committer" + "-%d")
                 .build());
     this.commitState = new CommitState(config);
+    this.taskId = config.connectorName() + "-" + config.taskId();
   }
 
   void process() {
@@ -114,7 +121,7 @@ class Coordinator extends Channel {
       Event event =
           new Event(config.connectGroupId(), new StartCommit(commitState.currentCommitId()));
       send(event);
-      LOG.info("Commit {} initiated", commitState.currentCommitId());
+      LOG.info("Coordinator {} initiated commit {}", taskId, commitState.currentCommitId());
     }
 
     consumeAvailable(POLL_DURATION);
@@ -144,7 +151,11 @@ class Coordinator extends Channel {
     try {
       doCommit(partialCommit);
     } catch (Exception e) {
-      LOG.warn("Commit failed, will try again next cycle", e);
+      LOG.warn(
+          "Coordinator {} failed to commit for commit {}, will try again next cycle",
+          taskId,
+          commitState.currentCommitId(),
+          e);
     } finally {
       commitState.endCurrentCommit();
     }
@@ -158,10 +169,9 @@ class Coordinator extends Channel {
         .executeWith(exec)
         .stopOnFailure()
         .run(
-            entry -> {
-              commitToTable(
-                  entry.getKey(), entry.getValue(), controlTopicOffsets(), validThroughTs);
-            });
+            entry ->
+                commitToTable(
+                    entry.getKey(), entry.getValue(), controlTopicOffsets(), validThroughTs));
 
     // we should only get here if all tables committed successfully...
     commitConsumerOffsets();
@@ -174,7 +184,8 @@ class Coordinator extends Channel {
     send(event);
 
     LOG.info(
-        "Commit {} complete, committed to {} table(s), valid-through {}",
+        "Coordinator {} completed commit {}, committed to {} table(s), valid-through {}",
+        taskId,
         commitState.currentCommitId(),
         commitMap.size(),
         validThroughTs);
@@ -188,6 +199,7 @@ class Coordinator extends Channel {
     }
   }
 
+  @SuppressWarnings("checkstyle:CyclomaticComplexity")
   private void commitToTable(
       TableReference tableReference,
       List<Envelope> envelopeList,
@@ -199,6 +211,15 @@ class Coordinator extends Channel {
       table = catalog.loadTable(tableIdentifier);
     } catch (NoSuchTableException e) {
       LOG.warn("Table not found, skipping commit: {}", tableIdentifier, e);
+      return;
+    }
+
+    if (tableReference.uuid() != null && !tableReference.uuid().equals(table.uuid())) {
+      LOG.warn(
+          "Skipping commits to table {} due to target table mismatch.  Expected: {} Received: {}",
+          tableIdentifier,
+          table.uuid(),
+          tableReference.uuid());
       return;
     }
 
@@ -240,28 +261,38 @@ class Coordinator extends Channel {
             .filter(distinctByKey(ContentFile::location))
             .collect(Collectors.toList());
 
+    if (terminated) {
+      throw new ConnectException(
+          String.format("Coordinator %s is terminated, commit aborted", taskId));
+    }
+
     if (dataFiles.isEmpty() && deleteFiles.isEmpty()) {
-      LOG.info("Nothing to commit to table {}, skipping", tableIdentifier);
+      LOG.info(
+          "Coordinator {} found nothing to commit to table {}, skipping", taskId, tableIdentifier);
     } else {
       if (deleteFiles.isEmpty()) {
-        AppendFiles appendOp = table.newAppend();
+        AppendFiles appendOp =
+            table.newAppend().validateWith(offsetValidator(tableIdentifier, committedOffsets));
         if (branch != null) {
           appendOp.toBranch(branch);
         }
         appendOp.set(snapshotOffsetsProp, offsetsJson);
         appendOp.set(COMMIT_ID_SNAPSHOT_PROP, commitState.currentCommitId().toString());
+        appendOp.set(TASK_ID_SNAPSHOT_PROP, taskId);
         if (validThroughTs != null) {
           appendOp.set(VALID_THROUGH_TS_SNAPSHOT_PROP, validThroughTs.toString());
         }
         dataFiles.forEach(appendOp::appendFile);
         appendOp.commit();
       } else {
-        RowDelta deltaOp = table.newRowDelta();
+        RowDelta deltaOp =
+            table.newRowDelta().validateWith(offsetValidator(tableIdentifier, committedOffsets));
         if (branch != null) {
           deltaOp.toBranch(branch);
         }
         deltaOp.set(snapshotOffsetsProp, offsetsJson);
         deltaOp.set(COMMIT_ID_SNAPSHOT_PROP, commitState.currentCommitId().toString());
+        deltaOp.set(TASK_ID_SNAPSHOT_PROP, taskId);
         if (validThroughTs != null) {
           deltaOp.set(VALID_THROUGH_TS_SNAPSHOT_PROP, validThroughTs.toString());
         }
@@ -279,12 +310,35 @@ class Coordinator extends Channel {
       send(event);
 
       LOG.info(
-          "Commit complete to table {}, snapshot {}, commit ID {}, valid-through {}",
+          "Coordinator {} completed commit to table {}, snapshot {}, commit ID {}, valid-through {}",
+          taskId,
           tableIdentifier,
           snapshotId,
           commitState.currentCommitId(),
           validThroughTs);
     }
+  }
+
+  private SnapshotAncestryValidator offsetValidator(
+      TableIdentifier tableIdentifier, Map<Integer, Long> expectedOffsets) {
+
+    return new SnapshotAncestryValidator() {
+      private Map<Integer, Long> lastCommittedOffsets;
+
+      @Override
+      public boolean validate(Iterable<Snapshot> baseSnapshots) {
+        lastCommittedOffsets = lastCommittedOffsets(baseSnapshots);
+
+        return expectedOffsets.equals(lastCommittedOffsets);
+      }
+
+      @Override
+      public String errorMessage() {
+        return String.format(
+            "Cannot commit to %s, stale offsets: Expected: %s Committed: %s",
+            tableIdentifier, expectedOffsets, lastCommittedOffsets);
+      }
+    };
   }
 
   private <T> Predicate<T> distinctByKey(Function<? super T, ?> keyExtractor) {
@@ -301,25 +355,44 @@ class Coordinator extends Channel {
 
   private Map<Integer, Long> lastCommittedOffsetsForTable(Table table, String branch) {
     Snapshot snapshot = latestSnapshot(table, branch);
-    while (snapshot != null) {
-      Map<String, String> summary = snapshot.summary();
-      String value = summary.get(snapshotOffsetsProp);
-      if (value != null) {
-        TypeReference<Map<Integer, Long>> typeRef = new TypeReference<Map<Integer, Long>>() {};
-        try {
-          return MAPPER.readValue(value, typeRef);
-        } catch (IOException e) {
-          throw new UncheckedIOException(e);
-        }
-      }
-      Long parentSnapshotId = snapshot.parentId();
-      snapshot = parentSnapshotId != null ? table.snapshot(parentSnapshotId) : null;
+
+    if (snapshot == null) {
+      return Map.of();
     }
-    return ImmutableMap.of();
+
+    Iterable<Snapshot> branchAncestry =
+        SnapshotUtil.ancestorsOf(snapshot.snapshotId(), table::snapshot);
+    return lastCommittedOffsets(branchAncestry);
+  }
+
+  private Map<Integer, Long> lastCommittedOffsets(Iterable<Snapshot> snapshots) {
+    return Streams.stream(snapshots)
+        .filter(Objects::nonNull)
+        .filter(snapshot -> snapshot.summary().containsKey(snapshotOffsetsProp))
+        .map(snapshot -> snapshot.summary().get(snapshotOffsetsProp))
+        .map(this::parseOffsets)
+        .findFirst()
+        .orElseGet(Map::of);
+  }
+
+  private Map<Integer, Long> parseOffsets(String value) {
+    if (value == null) {
+      return Map.of();
+    }
+
+    TypeReference<Map<Integer, Long>> typeRef = new TypeReference<>() {};
+    try {
+      return MAPPER.readValue(value, typeRef);
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
   }
 
   void terminate() {
+    this.terminated = true;
+
     exec.shutdownNow();
+
     // wait for coordinator termination, else cause the sink task to fail
     try {
       if (!exec.awaitTermination(1, TimeUnit.MINUTES)) {
@@ -328,11 +401,5 @@ class Coordinator extends Channel {
     } catch (InterruptedException e) {
       throw new ConnectException("Interrupted while waiting for coordinator shutdown", e);
     }
-  }
-
-  @Override
-  public void stop() {
-    terminate();
-    super.stop();
   }
 }

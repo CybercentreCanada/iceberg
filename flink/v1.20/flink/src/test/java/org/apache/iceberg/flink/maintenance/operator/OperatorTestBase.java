@@ -24,6 +24,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.MetricOptions;
 import org.apache.flink.core.execution.JobClient;
@@ -31,7 +35,6 @@ import org.apache.flink.core.execution.SavepointFormatType;
 import org.apache.flink.runtime.jobgraph.SavepointConfigOptions;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
-import org.apache.flink.streaming.api.graph.StreamGraphGenerator;
 import org.apache.flink.streaming.api.transformations.SinkTransformation;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.util.OneInputStreamOperatorTestHarness;
@@ -49,6 +52,7 @@ import org.apache.iceberg.TestHelpers;
 import org.apache.iceberg.data.FileHelpers;
 import org.apache.iceberg.data.GenericAppenderHelper;
 import org.apache.iceberg.data.GenericRecord;
+import org.apache.iceberg.data.Record;
 import org.apache.iceberg.deletes.PositionDelete;
 import org.apache.iceberg.flink.HadoopCatalogExtension;
 import org.apache.iceberg.flink.SimpleDataUtil;
@@ -76,6 +80,12 @@ public class OperatorTestBase {
               Types.NestedField.optional(2, "data", Types.StringType.get())),
           ImmutableMap.of(),
           ImmutableSet.of(SimpleDataUtil.SCHEMA.columns().get(0).fieldId()));
+
+  private static final Schema SCHEMA_WITH_TIMESTAMP_WITHOUT_ZONE =
+      new Schema(
+          Types.NestedField.optional(1, "id", Types.IntegerType.get()),
+          Types.NestedField.optional(2, "data", Types.StringType.get()),
+          Types.NestedField.optional(3, "ts", Types.TimestampType.withoutZone()));
 
   protected static final String UID_SUFFIX = "UID-Dummy";
   protected static final String SLOT_SHARING_GROUP = "SlotSharingGroup";
@@ -122,11 +132,14 @@ public class OperatorTestBase {
   }
 
   protected static Table createTable() {
-    // only test V2 tables as compaction doesn't support V3 with row lineage
-    return createTable("2");
+    return createTable(2, FileFormat.PARQUET);
   }
 
-  protected static Table createTable(String formatVersion) {
+  protected static Table createTable(int formatVersion) {
+    return createPartitionedTable(formatVersion, FileFormat.PARQUET);
+  }
+
+  protected static Table createTable(int formatVersion, FileFormat fileFormat) {
     return CATALOG_EXTENSION
         .catalog()
         .createTable(
@@ -135,13 +148,34 @@ public class OperatorTestBase {
             PartitionSpec.unpartitioned(),
             null,
             ImmutableMap.of(
+                "write.format.default",
+                fileFormat.name(),
                 TableProperties.FORMAT_VERSION,
-                formatVersion,
+                String.valueOf(formatVersion),
+                "flink.max-continuous-empty-commits",
+                "100000"));
+  }
+
+  protected static Table createTableWithTimestampWithoutZone() {
+    return CATALOG_EXTENSION
+        .catalog()
+        .createTable(
+            TestFixtures.TABLE_IDENTIFIER,
+            SCHEMA_WITH_TIMESTAMP_WITHOUT_ZONE,
+            PartitionSpec.builderFor(SCHEMA_WITH_TIMESTAMP_WITHOUT_ZONE).identity("ts").build(),
+            null,
+            ImmutableMap.of(
+                TableProperties.FORMAT_VERSION,
+                "2",
                 "flink.max-continuous-empty-commits",
                 "100000"));
   }
 
   protected static Table createTableWithDelete() {
+    return createTableWithDelete(2);
+  }
+
+  protected static Table createTableWithDelete(int formatVersion) {
     return CATALOG_EXTENSION
         .catalog()
         .createTable(
@@ -149,10 +183,11 @@ public class OperatorTestBase {
             SCHEMA_WITH_PRIMARY_KEY,
             PartitionSpec.unpartitioned(),
             null,
-            ImmutableMap.of("format-version", "2", "write.upsert.enabled", "true"));
+            ImmutableMap.of(
+                "format-version", String.valueOf(formatVersion), "write.upsert.enabled", "true"));
   }
 
-  protected static Table createPartitionedTable() {
+  protected static Table createPartitionedTable(int formatVersion, FileFormat fileFormat) {
     return CATALOG_EXTENSION
         .catalog()
         .createTable(
@@ -160,18 +195,57 @@ public class OperatorTestBase {
             SimpleDataUtil.SCHEMA,
             PartitionSpec.builderFor(SimpleDataUtil.SCHEMA).identity("data").build(),
             null,
-            ImmutableMap.of("format-version", "2", "flink.max-continuous-empty-commits", "100000"));
+            ImmutableMap.of(
+                "write.format.default",
+                fileFormat.name(),
+                "format-version",
+                String.valueOf(formatVersion),
+                "flink.max-continuous-empty-commits",
+                "100000"));
+  }
+
+  protected static Table createPartitionedTable() {
+    return createPartitionedTable(2, FileFormat.PARQUET);
   }
 
   protected void insert(Table table, Integer id, String data) throws IOException {
-    new GenericAppenderHelper(table, FileFormat.PARQUET, warehouseDir)
+    insert(table, id, data, FileFormat.PARQUET);
+  }
+
+  protected void insert(Table table, Integer id, String data, FileFormat fileFormat)
+      throws IOException {
+    new GenericAppenderHelper(table, fileFormat, warehouseDir)
         .appendToTable(Lists.newArrayList(SimpleDataUtil.createRecord(id, data)));
+    table.refresh();
+  }
+
+  protected void insert(Table table, List<Record> records) throws IOException {
+    insert(table, records, FileFormat.PARQUET);
+  }
+
+  protected void insert(Table table, List<Record> records, FileFormat fileFormat)
+      throws IOException {
+    new GenericAppenderHelper(table, fileFormat, warehouseDir).appendToTable(records);
     table.refresh();
   }
 
   protected void insert(Table table, Integer id, String data, String extra) throws IOException {
     new GenericAppenderHelper(table, FileFormat.PARQUET, warehouseDir)
         .appendToTable(Lists.newArrayList(SimpleDataUtil.createRecord(id, data, extra)));
+    table.refresh();
+  }
+
+  protected void insertWithTimestampWithoutZone(
+      Table table, Integer id, String data, LocalDateTime ts) throws IOException {
+    GenericRecord record = GenericRecord.create(SCHEMA_WITH_TIMESTAMP_WITHOUT_ZONE);
+    record.setField("id", id);
+    record.setField("data", data);
+    record.setField("ts", ts);
+    long tsMicros =
+        TimeUnit.SECONDS.toMicros(ts.toEpochSecond(ZoneOffset.UTC))
+            + TimeUnit.NANOSECONDS.toMicros(ts.getNano());
+    new GenericAppenderHelper(table, FileFormat.PARQUET, warehouseDir)
+        .appendToTable(TestHelpers.Row.of(tsMicros), Lists.newArrayList(record));
     table.refresh();
   }
 
@@ -207,6 +281,35 @@ public class OperatorTestBase {
    * @param oldData the old data to be deleted
    * @param tempData the temp data to be inserted and deleted with a position delete
    * @param newData the new data to be inserted
+   * @param formatVersion the format version to use
+   */
+  protected void update(
+      Table table, Integer id, String oldData, String tempData, String newData, int formatVersion)
+      throws IOException {
+    DataFile dataFile =
+        new GenericAppenderHelper(table, FileFormat.PARQUET, warehouseDir)
+            .writeFile(
+                Lists.newArrayList(
+                    SimpleDataUtil.createRecord(id, tempData),
+                    SimpleDataUtil.createRecord(id, newData)));
+    DeleteFile eqDelete = writeEqualityDelete(table, id, oldData);
+    DeleteFile posDelete = writePosDelete(table, dataFile.path(), 0, id, tempData, formatVersion);
+
+    table.newRowDelta().addRows(dataFile).addDeletes(eqDelete).addDeletes(posDelete).commit();
+  }
+
+  /**
+   * For the same identifier column id this methods simulate the following row operations: <tr>
+   * <li>add an equality delete on oldData
+   * <li>insert tempData
+   * <li>add a position delete on tempData
+   * <li>insert newData </tr>
+   *
+   * @param table to modify
+   * @param id the identifier column id
+   * @param oldData the old data to be deleted
+   * @param tempData the temp data to be inserted and deleted with a position delete
+   * @param newData the new data to be inserted
    */
   protected void update(Table table, Integer id, String oldData, String tempData, String newData)
       throws IOException {
@@ -217,13 +320,18 @@ public class OperatorTestBase {
                     SimpleDataUtil.createRecord(id, tempData),
                     SimpleDataUtil.createRecord(id, newData)));
     DeleteFile eqDelete = writeEqualityDelete(table, id, oldData);
-    DeleteFile posDelete = writePosDelete(table, dataFile.path(), 0, id, tempData);
+    DeleteFile posDelete = writePosDelete(table, dataFile.path(), 0, id, tempData, 2);
 
     table.newRowDelta().addRows(dataFile).addDeletes(eqDelete).addDeletes(posDelete).commit();
   }
 
   protected void insertPartitioned(Table table, Integer id, String data) throws IOException {
-    new GenericAppenderHelper(table, FileFormat.PARQUET, warehouseDir)
+    insertPartitioned(table, id, data, FileFormat.PARQUET);
+  }
+
+  protected void insertPartitioned(Table table, Integer id, String data, FileFormat fileFormat)
+      throws IOException {
+    new GenericAppenderHelper(table, fileFormat, warehouseDir)
         .appendToTable(
             TestHelpers.Row.of(data), Lists.newArrayList(SimpleDataUtil.createRecord(id, data)));
     table.refresh();
@@ -234,6 +342,13 @@ public class OperatorTestBase {
         .appendToTable(
             TestHelpers.Row.of(data, id),
             Lists.newArrayList(SimpleDataUtil.createRecord(id, data)));
+    table.refresh();
+  }
+
+  protected void insertPartitioned(Table table, List<Record> records, String partition)
+      throws IOException {
+    new GenericAppenderHelper(table, FileFormat.PARQUET, warehouseDir)
+        .appendToTable(TestHelpers.Row.of(partition), records);
     table.refresh();
   }
 
@@ -300,15 +415,17 @@ public class OperatorTestBase {
   }
 
   protected static void checkSlotSharingGroupsAreSet(StreamExecutionEnvironment env, String name) {
-    String nameToCheck = name != null ? name : StreamGraphGenerator.DEFAULT_SLOT_SHARING_GROUP;
-
     env.getTransformations().stream()
         .filter(
             t -> !(t instanceof SinkTransformation) && !(t.getName().equals(IGNORED_OPERATOR_NAME)))
         .forEach(
             t -> {
-              assertThat(t.getSlotSharingGroup()).isPresent();
-              assertThat(t.getSlotSharingGroup().get().getName()).isEqualTo(nameToCheck);
+              if (name == null) {
+                assertThat(t.getSlotSharingGroup()).isNotPresent();
+              } else {
+                assertThat(t.getSlotSharingGroup()).isPresent();
+                assertThat(t.getSlotSharingGroup().get().getName()).isEqualTo(name);
+              }
             });
   }
 
@@ -332,7 +449,8 @@ public class OperatorTestBase {
   }
 
   private DeleteFile writePosDelete(
-      Table table, CharSequence path, Integer pos, Integer id, String oldData) throws IOException {
+      Table table, CharSequence path, Integer pos, Integer id, String oldData, int formatVersion)
+      throws IOException {
     File file = File.createTempFile("junit", null, warehouseDir.toFile());
     assertThat(file.delete()).isTrue();
     PositionDelete<GenericRecord> posDelete = PositionDelete.create();
@@ -341,7 +459,7 @@ public class OperatorTestBase {
     nested.set(1, oldData);
     posDelete.set(path, pos, nested);
     return FileHelpers.writePosDeleteFile(
-        table, Files.localOutput(file), null, Lists.newArrayList(posDelete));
+        table, Files.localOutput(file), null, Lists.newArrayList(posDelete), formatVersion);
   }
 
   static void trigger(OneInputStreamOperatorTestHarness<Trigger, ?> harness) throws Exception {

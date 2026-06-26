@@ -26,6 +26,8 @@ import static org.apache.iceberg.azure.AzureProperties.ADLS_SAS_TOKEN_PREFIX;
 import static org.apache.iceberg.azure.AzureProperties.ADLS_SHARED_KEY_ACCOUNT_KEY;
 import static org.apache.iceberg.azure.AzureProperties.ADLS_SHARED_KEY_ACCOUNT_NAME;
 import static org.apache.iceberg.azure.AzureProperties.ADLS_WRITE_BLOCK_SIZE;
+import static org.apache.iceberg.azure.AzureProperties.AZURE_KEYVAULT_KEY_WRAP_ALGORITHM;
+import static org.apache.iceberg.azure.AzureProperties.AZURE_KEYVAULT_URL;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.mockito.ArgumentMatchers.any;
@@ -39,9 +41,13 @@ import com.azure.core.credential.AzureSasCredential;
 import com.azure.core.credential.TokenCredential;
 import com.azure.core.credential.TokenRequestContext;
 import com.azure.identity.DefaultAzureCredential;
+import com.azure.security.keyvault.keys.cryptography.models.KeyWrapAlgorithm;
 import com.azure.storage.common.StorageSharedKeyCredential;
 import com.azure.storage.file.datalake.DataLakeFileSystemClientBuilder;
 import java.io.IOException;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.util.Map;
 import java.util.Optional;
 import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.TestHelpers;
@@ -68,11 +74,17 @@ public class TestAzureProperties {
                 .put(ADLS_WRITE_BLOCK_SIZE, "42")
                 .put(ADLS_SHARED_KEY_ACCOUNT_NAME, "me")
                 .put(ADLS_SHARED_KEY_ACCOUNT_KEY, "secret")
+                .put(AzureProperties.ADLS_TOKEN_CREDENTIAL_PROVIDER, "provider")
+                .put(AzureProperties.ADLS_TOKEN_PROVIDER_PREFIX + "client-id", "clientId")
+                .put(AZURE_KEYVAULT_URL, "https://test-key-vault.vault.azure.net")
+                .put(AZURE_KEYVAULT_KEY_WRAP_ALGORITHM, KeyWrapAlgorithm.RSA1_5.getValue())
                 .build());
 
     AzureProperties serdedProps = roundTripSerializer.apply(props);
     assertThat(serdedProps.adlsReadBlockSize()).isEqualTo(props.adlsReadBlockSize());
     assertThat(serdedProps.adlsWriteBlockSize()).isEqualTo(props.adlsWriteBlockSize());
+    assertThat(serdedProps.keyVaultUrl()).isEqualTo(props.keyVaultUrl());
+    assertThat(serdedProps.keyWrapAlgorithm()).isEqualTo(props.keyWrapAlgorithm());
   }
 
   @Test
@@ -234,5 +246,76 @@ public class TestAzureProperties {
     verify(clientBuilder, never()).sasToken(any());
     verify(clientBuilder, never()).credential(any(StorageSharedKeyCredential.class));
     verify(clientBuilder, never()).credential(any(com.azure.identity.DefaultAzureCredential.class));
+  }
+
+  @Test
+  public void testDefaultTokenCredentialProvider() {
+    // No SAS, no shared key, no explicit token, no refresh endpoint -> default token provider
+    AzureProperties props = new AzureProperties(ImmutableMap.of());
+
+    DataLakeFileSystemClientBuilder clientBuilder = mock(DataLakeFileSystemClientBuilder.class);
+
+    props.applyClientConfiguration("account", clientBuilder);
+
+    // Default provider should be DefaultAzureCredential
+    verify(clientBuilder).credential(any(DefaultAzureCredential.class));
+    verify(clientBuilder, never()).sasToken(any());
+    verify(clientBuilder, never()).credential(any(StorageSharedKeyCredential.class));
+  }
+
+  @Test
+  public void testCustomTokenCredentialProvider() {
+    ImmutableMap<String, String> properties =
+        ImmutableMap.<String, String>builder()
+            .put(
+                AzureProperties.ADLS_TOKEN_CREDENTIAL_PROVIDER,
+                TestAzureProperties.DummyTokenCredentialProvider.class.getName())
+            .put(AzureProperties.ADLS_TOKEN_PROVIDER_PREFIX + "client-id", "clientId")
+            .put(AzureProperties.ADLS_TOKEN_PROVIDER_PREFIX + "client-secret", "clientSecret")
+            .put("custom.property", "custom.value")
+            .build();
+
+    AzureProperties props = new AzureProperties(properties);
+
+    DataLakeFileSystemClientBuilder clientBuilder = mock(DataLakeFileSystemClientBuilder.class);
+    ArgumentCaptor<TokenCredential> credentialCaptor =
+        ArgumentCaptor.forClass(TokenCredential.class);
+
+    props.applyClientConfiguration("account", clientBuilder);
+
+    verify(clientBuilder).credential(credentialCaptor.capture());
+    TokenCredential credential = credentialCaptor.getValue();
+    assertThat(credential).isInstanceOf(DummyTokenCredential.class);
+
+    // Provider should receive only prefixed properties, with prefix stripped
+    assertThat(DummyTokenCredentialProvider.properties)
+        .containsEntry("client-id", "clientId")
+        .containsEntry("client-secret", "clientSecret")
+        .doesNotContainKey("custom.property")
+        .doesNotContainKey(AzureProperties.ADLS_TOKEN_CREDENTIAL_PROVIDER);
+
+    verify(clientBuilder, never()).sasToken(any());
+    verify(clientBuilder, never()).credential(any(StorageSharedKeyCredential.class));
+  }
+
+  static class DummyTokenCredential implements TokenCredential {
+    @Override
+    public Mono<AccessToken> getToken(TokenRequestContext request) {
+      return Mono.just(new AccessToken("dummy", OffsetDateTime.now(ZoneOffset.UTC).plusHours(1)));
+    }
+  }
+
+  static class DummyTokenCredentialProvider implements AdlsTokenCredentialProvider {
+    static Map<String, String> properties;
+
+    @Override
+    public TokenCredential credential() {
+      return new DummyTokenCredential();
+    }
+
+    @Override
+    public void initialize(Map<String, String> credentialProperties) {
+      properties = credentialProperties;
+    }
   }
 }

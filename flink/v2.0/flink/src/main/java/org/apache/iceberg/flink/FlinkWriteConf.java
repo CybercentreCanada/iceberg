@@ -208,8 +208,34 @@ public class FlinkWriteConf {
         .parse();
   }
 
+  public String uidSuffix() {
+    return confParser
+        .stringConf()
+        .option(FlinkWriteOptions.UID_SUFFIX.key())
+        .defaultValue(FlinkWriteOptions.UID_SUFFIX.defaultValue())
+        .parse();
+  }
+
   public Integer writeParallelism() {
     return confParser.intConf().option(FlinkWriteOptions.WRITE_PARALLELISM.key()).parseOptional();
+  }
+
+  public boolean expireSnapshotsMode() {
+    return confParser
+        .booleanConf()
+        .option(FlinkWriteOptions.EXPIRE_SNAPSHOTS_ENABLE.key())
+        .flinkConfig(FlinkWriteOptions.EXPIRE_SNAPSHOTS_ENABLE)
+        .defaultValue(FlinkWriteOptions.EXPIRE_SNAPSHOTS_ENABLE.defaultValue())
+        .parse();
+  }
+
+  public boolean deleteOrphanFilesMode() {
+    return confParser
+        .booleanConf()
+        .option(FlinkWriteOptions.DELETE_ORPHAN_FILES_ENABLE.key())
+        .flinkConfig(FlinkWriteOptions.DELETE_ORPHAN_FILES_ENABLE)
+        .defaultValue(FlinkWriteOptions.DELETE_ORPHAN_FILES_ENABLE.defaultValue())
+        .parse();
   }
 
   public boolean compactMode() {

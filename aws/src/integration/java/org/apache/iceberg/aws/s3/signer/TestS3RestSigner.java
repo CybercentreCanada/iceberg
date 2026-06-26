@@ -31,15 +31,17 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.stream.Collectors;
+import javax.annotation.Nonnull;
 import org.apache.iceberg.aws.s3.MinioUtil;
-import org.apache.iceberg.relocated.com.google.common.collect.ImmutableList;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
+import org.apache.iceberg.rest.RESTCatalogProperties;
 import org.apache.iceberg.rest.auth.OAuth2Properties;
+import org.apache.iceberg.util.ThreadPools;
+import org.eclipse.jetty.compression.gzip.GzipCompression;
+import org.eclipse.jetty.compression.server.CompressionHandler;
+import org.eclipse.jetty.ee10.servlet.ServletContextHandler;
+import org.eclipse.jetty.ee10.servlet.ServletHolder;
 import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.server.handler.gzip.GzipHandler;
-import org.eclipse.jetty.servlet.ServletContextHandler;
-import org.eclipse.jetty.servlet.ServletHolder;
-import org.jetbrains.annotations.NotNull;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -54,7 +56,6 @@ import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.auth.signer.internal.AbstractAws4Signer;
 import software.amazon.awssdk.auth.signer.internal.AbstractAwsS3V4Signer;
 import software.amazon.awssdk.auth.signer.internal.Aws4SignerRequestParams;
-import software.amazon.awssdk.auth.signer.internal.SignerConstant;
 import software.amazon.awssdk.auth.signer.params.Aws4PresignerParams;
 import software.amazon.awssdk.auth.signer.params.AwsS3V4SignerParams;
 import software.amazon.awssdk.core.checksums.SdkChecksum;
@@ -62,6 +63,7 @@ import software.amazon.awssdk.core.client.config.SdkAdvancedClientOption;
 import software.amazon.awssdk.core.interceptor.ExecutionAttributes;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.http.SdkHttpFullRequest;
+import software.amazon.awssdk.http.auth.aws.signer.SignerConstant;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
@@ -106,8 +108,10 @@ public class TestS3RestSigner {
             ImmutableS3V4RestSignerClient.builder()
                 .properties(
                     ImmutableMap.of(
-                        S3V4RestSignerClient.S3_SIGNER_URI,
+                        RESTCatalogProperties.SIGNER_URI,
                         httpServer.getURI().toString(),
+                        RESTCatalogProperties.SIGNER_ENDPOINT,
+                        S3SignerServlet.S3_SIGNER_ENDPOINT,
                         OAuth2Properties.CREDENTIAL,
                         "catalog:12345"))
                 .build(),
@@ -123,8 +127,9 @@ public class TestS3RestSigner {
     // there aren't other token refreshes being scheduled after every sign request and after
     // TestS3RestSigner completes all tests, there should be only this single token in the queue
     // that is scheduled for refresh
-    assertThat(S3V4RestSignerClient.authManager)
-        .extracting("refreshExecutor")
+    assertThat(ThreadPools.authRefreshPool())
+        // internal field in java.util.concurrent.Executors.DelegatedScheduledExecutorService
+        .extracting("e")
         .asInstanceOf(type(ScheduledThreadPoolExecutor.class))
         .satisfies(
             executor -> {
@@ -180,19 +185,13 @@ public class TestS3RestSigner {
   }
 
   private static Server initHttpServer() throws Exception {
-    S3SignerServlet.SignRequestValidator deleteObjectsWithBody =
-        new S3SignerServlet.SignRequestValidator(
-            (s3SignRequest) ->
-                "post".equalsIgnoreCase(s3SignRequest.method())
-                    && s3SignRequest.uri().getQuery().contains("delete"),
-            (s3SignRequest) -> s3SignRequest.body() != null && !s3SignRequest.body().isEmpty(),
-            "Sign request for delete objects should have a request body");
-    S3SignerServlet servlet =
-        new S3SignerServlet(S3ObjectMapper.mapper(), ImmutableList.of(deleteObjectsWithBody));
+    S3SignerServlet servlet = new S3SignerServlet();
     ServletContextHandler servletContext =
         new ServletContextHandler(ServletContextHandler.NO_SESSIONS);
     servletContext.addServlet(new ServletHolder(servlet), "/*");
-    servletContext.setHandler(new GzipHandler());
+    CompressionHandler compressionHandler = new CompressionHandler();
+    compressionHandler.putCompression(new GzipCompression());
+    servletContext.insertHandler(compressionHandler);
 
     Server server = new Server(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
     server.setHandler(servletContext);
@@ -343,7 +342,7 @@ public class TestS3RestSigner {
       return awsResult;
     }
 
-    @NotNull
+    @Nonnull
     private SdkHttpFullRequest signWithAwsSigner(
         SdkHttpFullRequest request, AwsS3V4SignerParams signerParams) {
       // we need to filter out the unsigned headers for the AWS signer and re-append those headers

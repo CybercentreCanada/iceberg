@@ -63,13 +63,14 @@ import org.apache.iceberg.ParameterizedTestExtension;
 import org.apache.iceberg.Parameters;
 import org.apache.iceberg.PartitionData;
 import org.apache.iceberg.PartitionSpec;
+import org.apache.iceberg.SnapshotRef;
 import org.apache.iceberg.StructLike;
 import org.apache.iceberg.TestBase;
-import org.apache.iceberg.flink.FlinkSchemaUtil;
 import org.apache.iceberg.flink.SimpleDataUtil;
 import org.apache.iceberg.flink.TestHelpers;
 import org.apache.iceberg.flink.TestTableLoader;
 import org.apache.iceberg.io.FileAppenderFactory;
+import org.apache.iceberg.io.FileWriterFactory;
 import org.apache.iceberg.io.WriteResult;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableList;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
@@ -95,11 +96,11 @@ public class TestIcebergFilesCommitter extends TestBase {
   @Parameters(name = "formatVersion = {0}, fileFormat = {1}, branch = {2}")
   protected static List<Object> parameters() {
     return Arrays.asList(
-        new Object[] {1, FileFormat.AVRO, "main"},
+        new Object[] {1, FileFormat.AVRO, SnapshotRef.MAIN_BRANCH},
         new Object[] {2, FileFormat.AVRO, "test-branch"},
-        new Object[] {1, FileFormat.PARQUET, "main"},
+        new Object[] {1, FileFormat.PARQUET, SnapshotRef.MAIN_BRANCH},
         new Object[] {2, FileFormat.PARQUET, "test-branch"},
-        new Object[] {1, FileFormat.ORC, "main"},
+        new Object[] {1, FileFormat.ORC, SnapshotRef.MAIN_BRANCH},
         new Object[] {2, FileFormat.ORC, "test-branch"});
   }
 
@@ -786,7 +787,7 @@ public class TestIcebergFilesCommitter extends TestBase {
 
     JobID jobId = new JobID();
     OperatorID operatorId;
-    FileAppenderFactory<RowData> appenderFactory = createDeletableAppenderFactory();
+    FileWriterFactory<RowData> writerFactory = createWriterFactory();
 
     try (OneInputStreamOperatorTestHarness<FlinkWriteResult, Void> harness =
         createStreamSink(jobId)) {
@@ -829,7 +830,7 @@ public class TestIcebergFilesCommitter extends TestBase {
 
       RowData delete1 = SimpleDataUtil.createDelete(1, "aaa");
       DeleteFile deleteFile1 =
-          writeEqDeleteFile(appenderFactory, "delete-file-1", ImmutableList.of(delete1));
+          writeEqDeleteFile(writerFactory, "delete-file-1", ImmutableList.of(delete1));
       assertMaxCommittedCheckpointId(jobId, operatorId, checkpoint);
       harness.processElement(
           new FlinkWriteResult(
@@ -860,7 +861,7 @@ public class TestIcebergFilesCommitter extends TestBase {
 
     JobID jobId = new JobID();
     OperatorID operatorId;
-    FileAppenderFactory<RowData> appenderFactory = createDeletableAppenderFactory();
+    FileWriterFactory<RowData> writerFactory = createWriterFactory();
 
     try (OneInputStreamOperatorTestHarness<FlinkWriteResult, Void> harness =
         createStreamSink(jobId)) {
@@ -875,7 +876,7 @@ public class TestIcebergFilesCommitter extends TestBase {
       RowData delete3 = SimpleDataUtil.createDelete(3, "ccc");
       DataFile dataFile1 = writeDataFile("data-file-1", ImmutableList.of(insert1, insert2));
       DeleteFile deleteFile1 =
-          writeEqDeleteFile(appenderFactory, "delete-file-1", ImmutableList.of(delete3));
+          writeEqDeleteFile(writerFactory, "delete-file-1", ImmutableList.of(delete3));
       harness.processElement(
           new FlinkWriteResult(
               checkpoint,
@@ -889,7 +890,7 @@ public class TestIcebergFilesCommitter extends TestBase {
       RowData delete2 = SimpleDataUtil.createDelete(2, "bbb");
       DataFile dataFile2 = writeDataFile("data-file-2", ImmutableList.of(insert4));
       DeleteFile deleteFile2 =
-          writeEqDeleteFile(appenderFactory, "delete-file-2", ImmutableList.of(delete2));
+          writeEqDeleteFile(writerFactory, "delete-file-2", ImmutableList.of(delete2));
       harness.processElement(
           new FlinkWriteResult(
               ++checkpoint,
@@ -937,16 +938,14 @@ public class TestIcebergFilesCommitter extends TestBase {
     JobID jobId = new JobID();
     OperatorID operatorId;
 
-    FileAppenderFactory<RowData> appenderFactory =
-        new FlinkAppenderFactory(
-            table,
-            table.schema(),
-            FlinkSchemaUtil.convert(table.schema()),
-            table.properties(),
-            table.spec(),
-            new int[] {table.schema().findField("id").fieldId()},
-            table.schema(),
-            null);
+    FileWriterFactory<RowData> writerFactory =
+        new FlinkFileWriterFactory.Builder(table)
+            .dataFileFormat(format)
+            .dataSchema(table.schema())
+            .deleteFileFormat(format)
+            .equalityFieldIds(new int[] {table.schema().findField("id").fieldId()})
+            .equalityDeleteRowSchema(table.schema())
+            .build();
 
     try (OneInputStreamOperatorTestHarness<FlinkWriteResult, Void> harness =
         createStreamSink(jobId)) {
@@ -964,7 +963,7 @@ public class TestIcebergFilesCommitter extends TestBase {
         DataFile dataFile = writeDataFile("data-file-" + i, ImmutableList.of(insert1, insert2));
         DeleteFile deleteFile =
             writeEqDeleteFile(
-                appenderFactory, "delete-file-" + i, ImmutableList.of(insert1, insert2));
+                writerFactory, "delete-file-" + i, ImmutableList.of(insert1, insert2));
         harness.processElement(
             new FlinkWriteResult(
                 ++checkpoint,
@@ -1090,9 +1089,9 @@ public class TestIcebergFilesCommitter extends TestBase {
   }
 
   private DeleteFile writeEqDeleteFile(
-      FileAppenderFactory<RowData> appenderFactory, String filename, List<RowData> deletes)
+      FileWriterFactory<RowData> writerFactory, String filename, List<RowData> deletes)
       throws IOException {
-    return SimpleDataUtil.writeEqDeleteFile(table, format, filename, appenderFactory, deletes);
+    return SimpleDataUtil.writeEqDeleteFile(table, table.spec(), filename, writerFactory, deletes);
   }
 
   private DeleteFile writePosDeleteFile(
@@ -1103,20 +1102,18 @@ public class TestIcebergFilesCommitter extends TestBase {
     return SimpleDataUtil.writePosDeleteFile(table, format, filename, appenderFactory, positions);
   }
 
-  private FileAppenderFactory<RowData> createDeletableAppenderFactory() {
+  private FileWriterFactory<RowData> createWriterFactory() {
     int[] equalityFieldIds =
         new int[] {
           table.schema().findField("id").fieldId(), table.schema().findField("data").fieldId()
         };
-    return new FlinkAppenderFactory(
-        table,
-        table.schema(),
-        FlinkSchemaUtil.convert(table.schema()),
-        table.properties(),
-        table.spec(),
-        equalityFieldIds,
-        table.schema(),
-        null);
+    return new FlinkFileWriterFactory.Builder(table)
+        .dataFileFormat(format)
+        .dataSchema(table.schema())
+        .deleteFileFormat(format)
+        .equalityFieldIds(equalityFieldIds)
+        .equalityDeleteRowSchema(table.schema())
+        .build();
   }
 
   private ManifestFile createTestingManifestFile(Path manifestPath, DataFile dataFile)

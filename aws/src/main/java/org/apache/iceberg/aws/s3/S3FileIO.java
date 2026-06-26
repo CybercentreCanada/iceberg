@@ -18,16 +18,22 @@
  */
 package org.apache.iceberg.aws.s3;
 
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import org.apache.iceberg.aws.S3FileIOAwsClientFactories;
@@ -94,7 +100,7 @@ public class S3FileIO
   private static final String DEFAULT_METRICS_IMPL =
       "org.apache.iceberg.hadoop.HadoopMetricsContext";
   private static final String ROOT_PREFIX = "s3";
-  private static volatile ExecutorService executorService;
+  private static volatile ScheduledExecutorService executorService;
 
   private String credential = null;
   private SerializableSupplier<S3Client> s3;
@@ -104,8 +110,9 @@ public class S3FileIO
   private final AtomicBoolean isResourceClosed = new AtomicBoolean(false);
   private transient StackTraceElement[] createStack;
   // use modifiable collection for Kryo serde
-  private List<StorageCredential> storageCredentials = Lists.newArrayList();
+  private volatile List<StorageCredential> storageCredentials = Lists.newArrayList();
   private transient volatile Map<String, PrefixedS3Client> clientByPrefix;
+  private transient volatile ScheduledFuture<?> refreshFuture;
 
   /**
    * No-arg constructor to load the FileIO dynamically.
@@ -122,7 +129,7 @@ public class S3FileIO
    * @param s3 s3 supplier
    */
   public S3FileIO(SerializableSupplier<S3Client> s3) {
-    this(s3, null, new S3FileIOProperties());
+    this(s3, null);
   }
 
   /**
@@ -134,45 +141,10 @@ public class S3FileIO
    * @param s3Async s3Async supplier
    */
   public S3FileIO(SerializableSupplier<S3Client> s3, SerializableSupplier<S3AsyncClient> s3Async) {
-    this(s3, s3Async, new S3FileIOProperties());
-  }
-
-  /**
-   * Constructor with custom s3 supplier and S3FileIO properties.
-   *
-   * <p>Calling {@link S3FileIO#initialize(Map)} will overwrite information set in this constructor.
-   *
-   * @param s3 s3 supplier
-   * @param s3FileIOProperties S3 FileIO properties
-   * @deprecated since 1.10.0, will be removed in 1.11.0; use {@link
-   *     S3FileIO#S3FileIO(SerializableSupplier)} with {@link S3FileIO#initialize(Map)} instead
-   */
-  @Deprecated
-  public S3FileIO(SerializableSupplier<S3Client> s3, S3FileIOProperties s3FileIOProperties) {
-    this(s3, null, s3FileIOProperties);
-  }
-
-  /**
-   * Constructor with custom s3 supplier, s3Async supplier and S3FileIO properties.
-   *
-   * <p>Calling {@link S3FileIO#initialize(Map)} will overwrite information set in this constructor.
-   *
-   * @param s3 s3 supplier
-   * @param s3Async s3Async supplier
-   * @param s3FileIOProperties S3 FileIO properties
-   * @deprecated since 1.10.0, will be removed in 1.11.0; use {@link
-   *     S3FileIO#S3FileIO(SerializableSupplier, SerializableSupplier)} with {@link
-   *     S3FileIO#initialize(Map)} instead
-   */
-  @Deprecated
-  public S3FileIO(
-      SerializableSupplier<S3Client> s3,
-      SerializableSupplier<S3AsyncClient> s3Async,
-      S3FileIOProperties s3FileIOProperties) {
     this.s3 = s3;
     this.s3Async = s3Async;
     this.createStack = Thread.currentThread().getStackTrace();
-    this.properties = SerializableMap.copyOf(s3FileIOProperties.properties());
+    this.properties = SerializableMap.copyOf(Maps.newHashMap());
   }
 
   @Override
@@ -454,7 +426,11 @@ public class S3FileIO
                         new PrefixedS3Client(
                             storageCredential.prefix(), propertiesWithCredentials, s3, s3Async));
                   });
+
           this.clientByPrefix = localClientByPrefix;
+          // Note: the s3 clients separately refresh via the VendedCredentialsProvider but are
+          // not directly referencable from the FileIO
+          scheduleCredentialRefresh();
         }
       }
     }
@@ -462,14 +438,54 @@ public class S3FileIO
     return clientByPrefix;
   }
 
-  private ExecutorService executorService() {
+  private void scheduleCredentialRefresh() {
+    storageCredentials.stream()
+        .map(
+            storageCredential ->
+                storageCredential.config().get(S3FileIOProperties.SESSION_TOKEN_EXPIRES_AT_MS))
+        .filter(Objects::nonNull)
+        .map(expiresAtString -> Instant.ofEpochMilli(Long.parseLong(expiresAtString)))
+        .min(Comparator.naturalOrder())
+        .ifPresent(
+            expiresAt -> {
+              Instant prefetchAt = expiresAt.minus(5, ChronoUnit.MINUTES);
+              long delay = Duration.between(Instant.now(), prefetchAt).toMillis();
+              this.refreshFuture =
+                  executorService()
+                      .schedule(this::refreshStorageCredentials, delay, TimeUnit.MILLISECONDS);
+            });
+  }
+
+  private void refreshStorageCredentials() {
+    if (isResourceClosed.get()) {
+      return;
+    }
+
+    try (VendedCredentialsProvider provider = VendedCredentialsProvider.create(properties)) {
+      List<StorageCredential> refreshed =
+          provider.fetchCredentials().credentials().stream()
+              .filter(c -> c.prefix().startsWith(ROOT_PREFIX))
+              .map(c -> StorageCredential.create(c.prefix(), c.config()))
+              .collect(Collectors.toList());
+
+      if (!refreshed.isEmpty() && !isResourceClosed.get()) {
+        this.storageCredentials = Lists.newArrayList(refreshed);
+        scheduleCredentialRefresh();
+      }
+    } catch (Exception e) {
+      LOG.warn("Failed to refresh storage credentials", e);
+    }
+  }
+
+  private ScheduledExecutorService executorService() {
     if (executorService == null) {
       synchronized (S3FileIO.class) {
         if (executorService == null) {
           executorService =
-              ThreadPools.newExitingWorkerPool(
-                  "iceberg-s3fileio-delete",
-                  clientForStoragePath(ROOT_PREFIX).s3FileIOProperties().deleteThreads());
+              ThreadPools.newExitingScheduledPool(
+                  "iceberg-s3fileio-tasks",
+                  clientForStoragePath(ROOT_PREFIX).s3FileIOProperties().deleteThreads(),
+                  Duration.ofSeconds(10));
         }
       }
     }
@@ -526,10 +542,14 @@ public class S3FileIO
         clientByPrefix.values().forEach(PrefixedS3Client::close);
         this.clientByPrefix = null;
       }
+      if (refreshFuture != null) {
+        refreshFuture.cancel(true);
+        refreshFuture = null;
+      }
     }
   }
 
-  @SuppressWarnings({"checkstyle:NoFinalizer", "Finalize"})
+  @SuppressWarnings({"checkstyle:NoFinalizer", "Finalize", "deprecation"})
   @Override
   protected void finalize() throws Throwable {
     super.finalize();
@@ -594,8 +614,21 @@ public class S3FileIO
   @Override
   public void setCredentials(List<StorageCredential> credentials) {
     Preconditions.checkArgument(credentials != null, "Invalid storage credentials: null");
+    // stop any refresh that might be scheduled
+    if (refreshFuture != null) {
+      refreshFuture.cancel(true);
+    }
+
     // copy credentials into a modifiable collection for Kryo serde
     this.storageCredentials = Lists.newArrayList(credentials);
+
+    // if the clients are already initialized, we need to close and allow them to be recreated
+    synchronized (this) {
+      if (clientByPrefix != null) {
+        clientByPrefix.values().forEach(PrefixedS3Client::close);
+        this.clientByPrefix = null;
+      }
+    }
   }
 
   @Override

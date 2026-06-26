@@ -35,22 +35,30 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.net.SocketTimeoutException;
+import java.nio.file.Path;
+import java.security.KeyStore;
+import java.security.cert.CertificateException;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManagerFactory;
 import org.apache.hc.client5.http.auth.AuthScope;
 import org.apache.hc.client5.http.auth.UsernamePasswordCredentials;
 import org.apache.hc.client5.http.config.ConnectionConfig;
 import org.apache.hc.client5.http.impl.auth.BasicCredentialsProvider;
 import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.client5.http.io.HttpClientConnectionManager;
+import org.apache.hc.client5.http.ssl.NoopHostnameVerifier;
 import org.apache.hc.core5.http.HttpHost;
 import org.apache.hc.core5.http.HttpStatus;
 import org.apache.iceberg.IcebergBuild;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
+import org.apache.iceberg.relocated.com.google.common.collect.Sets;
 import org.apache.iceberg.rest.auth.AuthSession;
 import org.apache.iceberg.rest.auth.TLSConfigurer;
 import org.apache.iceberg.rest.responses.ErrorResponse;
@@ -58,19 +66,22 @@ import org.apache.iceberg.rest.responses.ErrorResponseParser;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockserver.configuration.Configuration;
 import org.mockserver.integration.ClientAndServer;
+import org.mockserver.logging.MockServerLogger;
 import org.mockserver.matchers.Times;
 import org.mockserver.model.HttpRequest;
 import org.mockserver.model.HttpResponse;
+import org.mockserver.socket.tls.KeyStoreFactory;
 import org.mockserver.verify.VerificationTimes;
 
 /**
  * * Exercises the RESTClient interface, specifically over a mocked-server using the actual
- * HttpRESTClient code.
+ * HTTPClient code.
  */
 public class TestHTTPClient {
 
@@ -87,6 +98,7 @@ public class TestHTTPClient {
   private static RESTClient restClient;
 
   public static class DefaultTLSConfigurer implements TLSConfigurer {
+
     public static int count = 0;
 
     public DefaultTLSConfigurer() {
@@ -95,6 +107,7 @@ public class TestHTTPClient {
   }
 
   public static class TLSConfigurerMissingNoArgCtor implements TLSConfigurer {
+
     TLSConfigurerMissingNoArgCtor(String str) {}
   }
 
@@ -300,9 +313,8 @@ public class TestHTTPClient {
               () -> clientWithProxy.get("v1/config", Item.class, ImmutableMap.of(), onError))
           .isInstanceOf(RuntimeException.class)
           .hasMessage(
-              String.format(
-                  "%s - %s",
-                  "Proxy Authentication Required", HttpStatus.SC_PROXY_AUTHENTICATION_REQUIRED));
+              "%s - %s",
+              "Proxy Authentication Required", HttpStatus.SC_PROXY_AUTHENTICATION_REQUIRED);
     }
   }
 
@@ -396,6 +408,101 @@ public class TestHTTPClient {
         .hasMessageContaining("does not implement TLSConfigurer");
   }
 
+  /** A TLSConfigurer that relies on the default (built-in) JSSE verifier. */
+  public static class BuiltInHostnameVerifierTLSConfigurer implements TLSConfigurer {
+
+    @Override
+    public SSLContext sslContext() {
+      return mockServerSSLContext();
+    }
+  }
+
+  /** A TLSConfigurer that overrides hostnameVerifier() to return a custom verifier. */
+  public static class CustomHostnameVerifierTLSConfigurer implements TLSConfigurer {
+
+    @Override
+    public SSLContext sslContext() {
+      return mockServerSSLContext();
+    }
+
+    @Override
+    public HostnameVerifier hostnameVerifier() {
+      return NoopHostnameVerifier.INSTANCE;
+    }
+  }
+
+  private static SSLContext mockServerSSLContext() {
+    try {
+      KeyStore keyStore =
+          new KeyStoreFactory(Configuration.configuration(), new MockServerLogger())
+              .loadOrCreateKeyStore();
+      TrustManagerFactory tmf =
+          TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+      tmf.init(keyStore);
+      SSLContext sslContext = SSLContext.getInstance("TLSv1.2");
+      sslContext.init(null, tmf.getTrustManagers(), null);
+      return sslContext;
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to create SSLContext", e);
+    }
+  }
+
+  @Test
+  public void testTLSConfigurerHostnameVerifier(@TempDir Path temp) throws IOException {
+
+    // Start a dedicated MockServer with a certificate that does NOT include
+    // 127.0.0.1 or localhost in its SANs.
+    Configuration tlsConfig = Configuration.configuration();
+    tlsConfig.proactivelyInitialiseTLS(true);
+    tlsConfig.preventCertificateDynamicUpdate(true);
+    tlsConfig.sslCertificateDomainName("example.com");
+    tlsConfig.sslSubjectAlternativeNameIps(Sets.newHashSet("1.2.3.4"));
+    tlsConfig.sslSubjectAlternativeNameDomains(Sets.newHashSet("example.com"));
+    tlsConfig.directoryToSaveDynamicSSLCertificate(temp.toFile().getAbsolutePath());
+
+    int tlsPort = PORT + 1;
+    try (ClientAndServer server = startClientAndServer(tlsConfig, tlsPort)) {
+
+      String path = "tls/hostname-verifier/path";
+      HttpRequest mockRequest =
+          request()
+              .withPath("/" + path)
+              .withMethod(HttpMethod.HEAD.name().toUpperCase(Locale.ROOT));
+      HttpResponse mockResponse = response().withStatusCode(200).withBody("TLS response");
+      server.when(mockRequest).respond(mockResponse);
+
+      // With no custom hostnameVerifier (null), the BUILTIN policy is used automatically,
+      // so the JSSE built-in verifier rejects the connection because the SANs don't match
+      try (HTTPClient builtInVerifierClient =
+          HTTPClient.builder(
+                  Map.of(
+                      HTTPClient.REST_TLS_CONFIGURER,
+                      BuiltInHostnameVerifierTLSConfigurer.class.getName()))
+              .uri(String.format("https://127.0.0.1:%d", tlsPort))
+              .withAuthSession(AuthSession.EMPTY)
+              .build()) {
+        assertThatThrownBy(() -> builtInVerifierClient.head(path, Map.of(), (unused) -> {}))
+            .rootCause()
+            .isInstanceOf(CertificateException.class)
+            .hasMessage("No subject alternative names matching IP address 127.0.0.1 found");
+      }
+
+      // With a custom hostnameVerifier (NoopHostnameVerifier), the CLIENT policy is used
+      // automatically, so hostname verification is bypassed and the request succeeds
+      try (HTTPClient customVerifierClient =
+          HTTPClient.builder(
+                  Map.of(
+                      HTTPClient.REST_TLS_CONFIGURER,
+                      CustomHostnameVerifierTLSConfigurer.class.getName()))
+              .uri(String.format("https://127.0.0.1:%d", tlsPort))
+              .withAuthSession(AuthSession.EMPTY)
+              .build()) {
+        assertThatCode(() -> customVerifierClient.head(path, Map.of(), (unused) -> {}))
+            .doesNotThrowAnyException();
+      }
+    }
+  }
+
   @Test
   public void testSocketTimeout() throws IOException {
     long socketTimeoutMs = 2000L;
@@ -435,7 +542,7 @@ public class TestHTTPClient {
                     .uri(URI)
                     .build())
         .isInstanceOf(NumberFormatException.class)
-        .hasMessage(String.format("For input string: \"%s\"", invalidTimeoutMs));
+        .hasMessage("For input string: \"%s\"", invalidTimeoutMs);
 
     String invalidNegativeTimeoutMs = "-1";
     assertThatThrownBy(
@@ -444,7 +551,7 @@ public class TestHTTPClient {
                     .uri(URI)
                     .build())
         .isInstanceOf(IllegalArgumentException.class)
-        .hasMessage(String.format("duration must not be negative: %s", invalidNegativeTimeoutMs));
+        .hasMessage("duration must not be negative: %s", invalidNegativeTimeoutMs);
   }
 
   @Test
@@ -520,8 +627,7 @@ public class TestHTTPClient {
     assertThatThrownBy(() -> doExecuteRequest(method, path, body, onError, h -> {}))
         .isInstanceOf(RuntimeException.class)
         .hasMessage(
-            String.format(
-                "Called error handler for method %s due to status code: %d", method, statusCode));
+            "Called error handler for method %s due to status code: %d", method, statusCode);
 
     verify(onError).accept(any());
   }
@@ -602,7 +708,8 @@ public class TestHTTPClient {
       case POST:
         return restClient.post(path, body, Item.class, headers, onError, responseHeaders);
       case GET:
-        return restClient.get(path, Item.class, headers, onError);
+        return restClient.get(
+            path, ImmutableMap.of(), Item.class, headers, onError, responseHeaders);
       case HEAD:
         restClient.head(path, headers, onError);
         return null;
@@ -614,6 +721,7 @@ public class TestHTTPClient {
   }
 
   public static class Item implements RESTRequest, RESTResponse {
+
     private Long id;
     private String data;
 

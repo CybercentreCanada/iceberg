@@ -19,7 +19,3 @@ It also includes some pull-requests made by CCCS developers that are specific to
 #### Origin Pull-Request
 
 - [Added azure specific oauth things](https://github.com/CybercentreCanada/iceberg/pull/19)
-
-#### Cherry-picked ahead of official release
-- [Spark 3.5: Backport: Refactor Spark procedures to consistently use ProcedureInput for parameter handling.](https://github.com/apache/iceberg/pull/14179)
-- [Spark: enable stream-results option for remove orphan files](https://github.com/apache/iceberg/pull/14278)

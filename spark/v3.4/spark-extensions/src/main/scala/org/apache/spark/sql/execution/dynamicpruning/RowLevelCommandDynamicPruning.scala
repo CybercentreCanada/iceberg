@@ -16,7 +16,6 @@
  * specific language governing permissions and limitations
  * under the License.
  */
-
 package org.apache.spark.sql.execution.dynamicpruning
 
 import org.apache.spark.sql.SparkSession
@@ -46,7 +45,7 @@ import org.apache.spark.sql.catalyst.plans.logical.UpdateIcebergTable
 import org.apache.spark.sql.catalyst.rules.Rule
 import org.apache.spark.sql.catalyst.trees.TreePattern.PLAN_EXPRESSION
 import org.apache.spark.sql.catalyst.trees.TreePattern.SORT
-import org.apache.spark.sql.connector.read.SupportsRuntimeFiltering
+import org.apache.spark.sql.connector.read.SupportsRuntimeV2Filtering
 import org.apache.spark.sql.execution.datasources.v2.DataSourceV2Relation
 import org.apache.spark.sql.execution.datasources.v2.DataSourceV2ScanRelation
 import org.apache.spark.sql.execution.datasources.v2.ExtendedDataSourceV2Implicits
@@ -58,16 +57,19 @@ import scala.collection.compat.immutable.ArraySeq
  * Note that only group-based rewrite plans (i.e. ReplaceData) are taken into account.
  * Row-based rewrite plans are subject to usual runtime filtering.
  */
-case class RowLevelCommandDynamicPruning(spark: SparkSession) extends Rule[LogicalPlan] with PredicateHelper {
+case class RowLevelCommandDynamicPruning(spark: SparkSession)
+    extends Rule[LogicalPlan]
+    with PredicateHelper {
 
   import ExtendedDataSourceV2Implicits._
 
   override def apply(plan: LogicalPlan): LogicalPlan = plan transformDown {
     // apply special dynamic filtering only for plans that don't support deltas
     case RewrittenRowLevelCommand(
-        command: RowLevelCommand,
-        DataSourceV2ScanRelation(_, scan: SupportsRuntimeFiltering, _, _, _),
-        rewritePlan: ReplaceIcebergData) if conf.dynamicPartitionPruningEnabled && isCandidate(command) =>
+          command: RowLevelCommand,
+          DataSourceV2ScanRelation(_, scan: SupportsRuntimeV2Filtering, _, _, _),
+          rewritePlan: ReplaceIcebergData)
+        if conf.dynamicPartitionPruningEnabled && isCandidate(command) =>
 
       // use reference equality to find exactly the required scan relations
       val newRewritePlan = rewritePlan transformUp {
@@ -154,15 +156,15 @@ case class RowLevelCommandDynamicPruning(spark: SparkSession) extends Rule[Logic
   }
 
   // borrowed from OptimizeSubqueries in Spark
-  private def optimizeSubquery(plan: LogicalPlan): LogicalPlan = plan.transformAllExpressionsWithPruning(
-    _.containsPattern(PLAN_EXPRESSION)) {
-    case s: SubqueryExpression =>
-      val Subquery(newPlan, _) = spark.sessionState.optimizer.execute(Subquery.fromExpression(s))
-      // At this point we have an optimized subquery plan that we are going to attach
-      // to this subquery expression. Here we can safely remove any top level sort
-      // in the plan as tuples produced by a subquery are un-ordered.
-      s.withNewPlan(removeTopLevelSort(newPlan))
-  }
+  private def optimizeSubquery(plan: LogicalPlan): LogicalPlan =
+    plan.transformAllExpressionsWithPruning(_.containsPattern(PLAN_EXPRESSION)) {
+      case s: SubqueryExpression =>
+        val Subquery(newPlan, _) = spark.sessionState.optimizer.execute(Subquery.fromExpression(s))
+        // At this point we have an optimized subquery plan that we are going to attach
+        // to this subquery expression. Here we can safely remove any top level sort
+        // in the plan as tuples produced by a subquery are un-ordered.
+        s.withNewPlan(removeTopLevelSort(newPlan))
+    }
 
   // borrowed from OptimizeSubqueries in Spark
   private def removeTopLevelSort(plan: LogicalPlan): LogicalPlan = {

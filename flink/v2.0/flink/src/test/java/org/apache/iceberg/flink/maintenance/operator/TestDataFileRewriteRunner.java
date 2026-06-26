@@ -38,6 +38,7 @@ import org.apache.iceberg.FileFormat;
 import org.apache.iceberg.PartitionData;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Schema;
+import org.apache.iceberg.SnapshotRef;
 import org.apache.iceberg.StructLike;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.data.GenericAppenderHelper;
@@ -249,6 +250,26 @@ class TestDataFileRewriteRunner extends OperatorTestBase {
   }
 
   @Test
+  void testV3Table() throws Exception {
+    Table table = createTableWithDelete(3);
+    update(table, 1, null, "a", "b", 3);
+    update(table, 1, "b", "c");
+
+    List<DataFileRewritePlanner.PlannedGroup> planned = planDataFileRewrite(tableLoader());
+    assertThat(planned).hasSize(1);
+
+    List<DataFileRewriteRunner.ExecutedGroup> actual = executeRewrite(planned);
+    assertThat(actual).hasSize(1);
+
+    assertRewriteFileGroup(
+        actual.get(0),
+        table,
+        records(table.schema(), ImmutableSet.of(ImmutableList.of(1, "c"))),
+        1,
+        ImmutableSet.of(new PartitionData(PartitionSpec.unpartitioned().partitionType())));
+  }
+
+  @Test
   void testSplitSize() throws Exception {
     Table table = createTable();
 
@@ -288,7 +309,8 @@ class TestDataFileRewriteRunner extends OperatorTestBase {
                         "2",
                         TARGET_FILE_SIZE_BYTES,
                         String.valueOf(targetFileSize)),
-                    Expressions.alwaysTrue()))) {
+                    Expressions::alwaysTrue,
+                    SnapshotRef.MAIN_BRANCH))) {
       testHarness.open();
 
       OperatorTestBase.trigger(testHarness);

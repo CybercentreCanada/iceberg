@@ -21,7 +21,9 @@ package org.apache.iceberg.spark.source;
 import static org.apache.iceberg.Files.localOutput;
 import static org.apache.iceberg.PlanningMode.DISTRIBUTED;
 import static org.apache.iceberg.PlanningMode.LOCAL;
+import static org.apache.iceberg.data.FileHelpers.encrypt;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assumptions.assumeThat;
 
 import java.io.File;
 import java.io.IOException;
@@ -34,7 +36,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.iceberg.DataFile;
-import org.apache.iceberg.DataFiles;
 import org.apache.iceberg.FileFormat;
 import org.apache.iceberg.Parameter;
 import org.apache.iceberg.ParameterizedTestExtension;
@@ -44,15 +45,16 @@ import org.apache.iceberg.PlanningMode;
 import org.apache.iceberg.Schema;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableProperties;
-import org.apache.iceberg.data.GenericAppenderFactory;
+import org.apache.iceberg.data.GenericFileWriterFactory;
 import org.apache.iceberg.data.GenericRecord;
 import org.apache.iceberg.data.Record;
 import org.apache.iceberg.hadoop.HadoopTables;
-import org.apache.iceberg.io.FileAppender;
+import org.apache.iceberg.io.DataWriter;
 import org.apache.iceberg.relocated.com.google.common.collect.ImmutableMap;
 import org.apache.iceberg.relocated.com.google.common.collect.Lists;
 import org.apache.iceberg.spark.SparkReadOptions;
 import org.apache.iceberg.spark.SparkWriteOptions;
+import org.apache.iceberg.spark.TestBase;
 import org.apache.iceberg.spark.data.GenericsHelpers;
 import org.apache.iceberg.types.Types;
 import org.apache.spark.sql.Dataset;
@@ -73,6 +75,7 @@ import org.apache.spark.sql.sources.LessThan;
 import org.apache.spark.sql.sources.Not;
 import org.apache.spark.sql.sources.StringStartsWith;
 import org.apache.spark.sql.util.CaseInsensitiveStringMap;
+import org.assertj.core.api.AbstractObjectAssert;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -114,6 +117,7 @@ public class TestFilteredScan {
         SparkSession.builder()
             .master("local[2]")
             .config("spark.driver.host", InetAddress.getLoopbackAddress().getHostAddress())
+            .config(TestBase.DISABLE_UI)
             .getOrCreate();
   }
 
@@ -173,17 +177,17 @@ public class TestFilteredScan {
 
     this.records = testRecords(tableSchema);
 
-    try (FileAppender<Record> writer =
-        new GenericAppenderFactory(tableSchema).newAppender(localOutput(testFile), fileFormat)) {
-      writer.addAll(records);
+    DataWriter<Record> writer =
+        new GenericFileWriterFactory.Builder()
+            .dataFileFormat(fileFormat)
+            .dataSchema(tableSchema)
+            .build()
+            .newDataWriter(encrypt(localOutput(testFile)), PartitionSpec.unpartitioned(), null);
+    try (writer) {
+      writer.write(records);
     }
 
-    DataFile file =
-        DataFiles.builder(PartitionSpec.unpartitioned())
-            .withRecordCount(records.size())
-            .withFileSizeInBytes(testFile.length())
-            .withPath(testFile.toString())
-            .build();
+    DataFile file = writer.toDataFile();
 
     table.newAppend().appendFile(file).commit();
   }
@@ -265,6 +269,98 @@ public class TestFilteredScan {
             unpartitioned.toString(),
             vectorized,
             "ts < cast('2017-12-22 00:00:00+00:00' as timestamp)"));
+  }
+
+  @TestTemplate
+  public void limitPushedDownToSparkScan() {
+    assumeThat(fileFormat)
+        .as("no need to run this across the entire test matrix")
+        .isEqualTo(FileFormat.PARQUET);
+
+    CaseInsensitiveStringMap options =
+        new CaseInsensitiveStringMap(ImmutableMap.of("path", unpartitioned.toString()));
+
+    SparkScanBuilder builder =
+        new SparkScanBuilder(spark, TABLES.load(options.get("path")), options);
+
+    long limit = 23;
+    // simulate Spark pushing down the limit to the scan builder
+    builder.pushLimit((int) limit);
+    assertThat(builder).extracting("limit").isEqualTo((int) limit);
+
+    // verify batch scan
+    AbstractObjectAssert<?, ?> scanAssert = assertThat(builder.build()).extracting("scan");
+    if (LOCAL == planningMode) {
+      scanAssert = scanAssert.extracting("scan");
+    }
+
+    scanAssert.extracting("context").extracting("minRowsRequested").isEqualTo(limit);
+
+    // verify changelog scan
+    assertThat(builder.buildChangelogScan())
+        .extracting("scan")
+        .extracting("context")
+        .extracting("minRowsRequested")
+        .isEqualTo(limit);
+
+    // verify CoW scan
+    assertThat(builder.buildCopyOnWriteScan())
+        .extracting("scan")
+        .extracting("scan")
+        .extracting("context")
+        .extracting("minRowsRequested")
+        .isEqualTo(limit);
+
+    // verify MoR scan
+    scanAssert = assertThat(builder.buildMergeOnReadScan()).extracting("scan");
+    if (LOCAL == planningMode) {
+      scanAssert = scanAssert.extracting("scan");
+    }
+
+    scanAssert.extracting("context").extracting("minRowsRequested").isEqualTo(limit);
+  }
+
+  @TestTemplate
+  public void limitPushedDownToSparkScanForMetadataTable() {
+    assumeThat(fileFormat)
+        .as("no need to run this across the entire test matrix")
+        .isEqualTo(FileFormat.PARQUET);
+
+    CaseInsensitiveStringMap options =
+        new CaseInsensitiveStringMap(ImmutableMap.of("path", unpartitioned.toString()));
+
+    // load the snapshots metadata table
+    SparkScanBuilder builder =
+        new SparkScanBuilder(spark, TABLES.load(options.get("path") + "#snapshots"), options);
+
+    long limit = 23;
+    // simulate Spark pushing down the limit to the scan builder
+    builder.pushLimit((int) limit);
+    assertThat(builder).extracting("limit").isEqualTo((int) limit);
+
+    // verify batch scan
+    assertThat(builder.build())
+        .extracting("scan")
+        .extracting("scan")
+        .extracting("context")
+        .extracting("minRowsRequested")
+        .isEqualTo(limit);
+
+    // verify CoW scan
+    assertThat(builder.buildCopyOnWriteScan())
+        .extracting("scan")
+        .extracting("scan")
+        .extracting("context")
+        .extracting("minRowsRequested")
+        .isEqualTo(limit);
+
+    // verify MoR scan
+    assertThat(builder.buildMergeOnReadScan())
+        .extracting("scan")
+        .extracting("scan")
+        .extracting("context")
+        .extracting("minRowsRequested")
+        .isEqualTo(limit);
   }
 
   @TestTemplate

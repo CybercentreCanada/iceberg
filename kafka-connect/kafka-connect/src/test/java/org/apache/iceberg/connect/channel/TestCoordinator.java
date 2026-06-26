@@ -32,6 +32,9 @@ import org.apache.iceberg.DeleteFile;
 import org.apache.iceberg.FileFormat;
 import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.Snapshot;
+import org.apache.iceberg.SnapshotChanges;
+import org.apache.iceberg.Table;
+import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.connect.events.AvroUtil;
 import org.apache.iceberg.connect.events.CommitComplete;
 import org.apache.iceberg.connect.events.CommitToTable;
@@ -70,8 +73,9 @@ public class TestCoordinator extends ChannelTestBase {
 
     Snapshot snapshot = snapshots.get(0);
     assertThat(snapshot.operation()).isEqualTo(DataOperations.APPEND);
-    assertThat(snapshot.addedDataFiles(table.io())).hasSize(1);
-    assertThat(snapshot.addedDeleteFiles(table.io())).isEmpty();
+    SnapshotChanges changes = SnapshotChanges.builderFor(table).snapshot(snapshot).build();
+    assertThat(changes.addedDataFiles()).hasSize(1);
+    assertThat(changes.addedDeleteFiles()).isEmpty();
 
     assertThat(snapshot.summary())
         .containsEntry(COMMIT_ID_SNAPSHOT_PROP, commitId.toString())
@@ -97,8 +101,9 @@ public class TestCoordinator extends ChannelTestBase {
 
     Snapshot snapshot = snapshots.get(0);
     assertThat(snapshot.operation()).isEqualTo(DataOperations.OVERWRITE);
-    assertThat(snapshot.addedDataFiles(table.io())).hasSize(1);
-    assertThat(snapshot.addedDeleteFiles(table.io())).hasSize(1);
+    SnapshotChanges changes = SnapshotChanges.builderFor(table).snapshot(snapshot).build();
+    assertThat(changes.addedDataFiles()).hasSize(1);
+    assertThat(changes.addedDeleteFiles()).hasSize(1);
 
     assertThat(snapshot.summary())
         .containsEntry(COMMIT_ID_SNAPSHOT_PROP, commitId.toString())
@@ -188,7 +193,7 @@ public class TestCoordinator extends ChannelTestBase {
             new DataWritten(
                 StructType.of(),
                 commitId,
-                new TableReference("catalog", ImmutableList.of("db"), "tbl"),
+                TableReference.of("catalog", TableIdentifier.of("db", "tbl"), null),
                 dataFiles,
                 deleteFiles));
     bytes = AvroUtil.encode(commitResponse);
@@ -252,5 +257,45 @@ public class TestCoordinator extends ChannelTestBase {
     assertThat(table.snapshots()).hasSize(2);
     assertThat(table.currentSnapshot().summary())
         .containsEntry(OFFSETS_SNAPSHOT_PROP, "{\"0\":3,\"1\":7}");
+  }
+
+  @Test
+  public void testCoordinatorCommittedOffsetValidation() {
+    // This test demonstrates that the Coordinator's validateAndCommit method
+    // prevents commits when another independent commit has updated the offsets
+    // during the commit process
+
+    // Set the initial offsets
+    table
+        .newAppend()
+        .appendFile(EventTestUtil.createDataFile())
+        .set(OFFSETS_SNAPSHOT_PROP, "{\"0\":1}")
+        .commit();
+
+    Table frozenTable = catalog.loadTable(TABLE_IDENTIFIER);
+
+    // return the original table state on the first load, so that the update will happen
+    // during the commit refresh
+    when(catalog.loadTable(TABLE_IDENTIFIER)).thenReturn(frozenTable).thenCallRealMethod();
+
+    // Independently update the offsets
+    table
+        .newAppend()
+        .appendFile(EventTestUtil.createDataFile())
+        .set(OFFSETS_SNAPSHOT_PROP, "{\"0\":7}")
+        .commit();
+
+    assertThat(table.snapshots()).hasSize(2);
+    Snapshot firstSnapshot = table.currentSnapshot();
+    assertThat(firstSnapshot.summary()).containsEntry(OFFSETS_SNAPSHOT_PROP, "{\"0\":7}");
+
+    // Trigger commit to the table
+    coordinatorTest(
+        ImmutableList.of(EventTestUtil.createDataFile()), ImmutableList.of(), EventTestUtil.now());
+
+    // Assert that the table was not updated and offsets remain
+    table.refresh();
+    assertThat(table.snapshots()).hasSize(2);
+    assertThat(firstSnapshot.summary()).containsEntry(OFFSETS_SNAPSHOT_PROP, "{\"0\":7}");
   }
 }

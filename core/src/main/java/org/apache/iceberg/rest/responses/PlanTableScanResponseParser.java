@@ -30,12 +30,16 @@ import org.apache.iceberg.PartitionSpec;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
 import org.apache.iceberg.rest.PlanStatus;
 import org.apache.iceberg.rest.TableScanResponseParser;
+import org.apache.iceberg.rest.credentials.Credential;
+import org.apache.iceberg.rest.credentials.CredentialParser;
 import org.apache.iceberg.util.JsonUtil;
 
 public class PlanTableScanResponseParser {
   private static final String STATUS = "status";
   private static final String PLAN_ID = "plan-id";
   private static final String PLAN_TASKS = "plan-tasks";
+  private static final String STORAGE_CREDENTIALS = "storage-credentials";
+  private static final String ERROR = "error";
 
   private PlanTableScanResponseParser() {}
 
@@ -57,11 +61,24 @@ public class PlanTableScanResponseParser {
     gen.writeStartObject();
     gen.writeStringField(STATUS, response.planStatus().status());
 
+    if (response.errorResponse() != null) {
+      ErrorResponseParser.writeError(response.errorResponse(), gen);
+    }
+
     if (response.planId() != null) {
       gen.writeStringField(PLAN_ID, response.planId());
     }
     if (response.planTasks() != null) {
       JsonUtil.writeStringArray(PLAN_TASKS, response.planTasks(), gen);
+    }
+
+    if (!response.credentials().isEmpty()) {
+      gen.writeArrayFieldStart(STORAGE_CREDENTIALS);
+      for (Credential credential : response.credentials()) {
+        CredentialParser.toJson(credential, gen);
+      }
+
+      gen.writeEndArray();
     }
 
     TableScanResponseParser.serializeScanTasks(
@@ -76,10 +93,7 @@ public class PlanTableScanResponseParser {
     Preconditions.checkArgument(
         json != null, "Cannot parse planTableScan response from empty or null object");
     return JsonUtil.parse(
-        json,
-        node -> {
-          return PlanTableScanResponseParser.fromJson(node, specsById, caseSensitive);
-        });
+        json, node -> PlanTableScanResponseParser.fromJson(node, specsById, caseSensitive));
   }
 
   public static PlanTableScanResponse fromJson(
@@ -89,18 +103,29 @@ public class PlanTableScanResponseParser {
         "Cannot parse planTableScan response from empty or null object");
 
     PlanStatus planStatus = PlanStatus.fromName(JsonUtil.getString(STATUS, json));
+    ErrorResponse errorResponse = null;
+    if (json.has(ERROR) && json.get(ERROR).isObject()) {
+      errorResponse = ErrorResponseParser.fromJson(json);
+    }
+
     String planId = JsonUtil.getStringOrNull(PLAN_ID, json);
     List<String> planTasks = JsonUtil.getStringListOrNull(PLAN_TASKS, json);
     List<DeleteFile> deleteFiles = TableScanResponseParser.parseDeleteFiles(json, specsById);
     List<FileScanTask> fileScanTasks =
         TableScanResponseParser.parseFileScanTasks(json, deleteFiles, specsById, caseSensitive);
 
-    return PlanTableScanResponse.builder()
-        .withPlanId(planId)
-        .withPlanStatus(planStatus)
-        .withPlanTasks(planTasks)
-        .withFileScanTasks(fileScanTasks)
-        .withDeleteFiles(deleteFiles)
-        .build();
+    PlanTableScanResponse.Builder builder =
+        PlanTableScanResponse.builder()
+            .withPlanId(planId)
+            .withPlanStatus(planStatus)
+            .withErrorResponse(errorResponse)
+            .withPlanTasks(planTasks)
+            .withFileScanTasks(fileScanTasks)
+            .withSpecsById(specsById);
+
+    if (json.hasNonNull(STORAGE_CREDENTIALS)) {
+      builder.withCredentials(LoadCredentialsResponseParser.fromJson(json).credentials());
+    }
+    return builder.build();
   }
 }

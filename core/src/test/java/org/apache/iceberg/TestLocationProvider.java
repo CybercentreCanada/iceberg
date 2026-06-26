@@ -183,9 +183,8 @@ public class TestLocationProvider extends TestBase {
     assertThatThrownBy(() -> table.locationProvider())
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage(
-            String.format(
-                "Provided implementation for dynamic instantiation should implement %s.",
-                LocationProvider.class));
+            "Provided implementation for dynamic instantiation should implement %s.",
+            LocationProvider.class);
   }
 
   @TestTemplate
@@ -220,7 +219,7 @@ public class TestLocationProvider extends TestBase {
     assertThatThrownBy(() -> table.locationProvider().newDataLocation("file"))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage(
-            "Property 'write.folder-storage.path' has been deprecated and will be removed in 2.0, use 'write.data.path' instead.");
+            "Property 'write.folder-storage.path' has been deprecated and will be removed in 2.0.0, use 'write.data.path' instead.");
 
     table
         .updateProperties()
@@ -231,7 +230,7 @@ public class TestLocationProvider extends TestBase {
     assertThatThrownBy(() -> table.locationProvider().newDataLocation("file"))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage(
-            "Property 'write.object-storage.path' has been deprecated and will be removed in 2.0, use 'write.data.path' instead.");
+            "Property 'write.object-storage.path' has been deprecated and will be removed in 2.0.0, use 'write.data.path' instead.");
   }
 
   @TestTemplate
@@ -246,7 +245,7 @@ public class TestLocationProvider extends TestBase {
     assertThatThrownBy(() -> table.locationProvider().newDataLocation("file"))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage(
-            "Property 'write.folder-storage.path' has been deprecated and will be removed in 2.0, use 'write.data.path' instead.");
+            "Property 'write.folder-storage.path' has been deprecated and will be removed in 2.0.0, use 'write.data.path' instead.");
   }
 
   @TestTemplate
@@ -296,7 +295,7 @@ public class TestLocationProvider extends TestBase {
     String fileLocation =
         table.locationProvider().newDataLocation(table.spec(), partitionData, "test.parquet");
 
-    // no partition values included in the path and last part of entropy is seperated with "-"
+    // no partition values included in the path and last part of entropy is separated with "-"
     assertThat(fileLocation).endsWith("/data/0110/1010/0011/11101000-test.parquet");
   }
 

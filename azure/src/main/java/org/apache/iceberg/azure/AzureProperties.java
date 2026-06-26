@@ -21,7 +21,6 @@ package org.apache.iceberg.azure;
 import com.azure.core.credential.AccessToken;
 import com.azure.core.credential.TokenCredential;
 import com.azure.core.credential.TokenRequestContext;
-import com.azure.identity.DefaultAzureCredentialBuilder;
 import com.azure.storage.common.StorageSharedKeyCredential;
 import com.azure.storage.file.datalake.DataLakeFileSystemClientBuilder;
 import java.io.Serializable;
@@ -49,6 +48,35 @@ public class AzureProperties implements Serializable {
   public static final String ADLS_SHARED_KEY_ACCOUNT_NAME = "adls.auth.shared-key.account.name";
   public static final String ADLS_SHARED_KEY_ACCOUNT_KEY = "adls.auth.shared-key.account.key";
   public static final String ADLS_TOKEN = "adls.token";
+  public static final String AZURE_KEYVAULT_URL = "azure.keyvault.url";
+  public static final String AZURE_KEYVAULT_KEY_WRAP_ALGORITHM =
+      "azure.keyvault.key-wrap-algorithm";
+
+  // Must match KeyWrapAlgorithm.RSA_OAEP_256.getValue() from azure-security-keyvault-keys
+  private static final String DEFAULT_KEY_WRAP_ALGORITHM = "RSA-OAEP-256";
+
+  /**
+   * Configure the ADLS token credential provider used to get {@link TokenCredential}. A fully
+   * qualified concrete class with package that implements the {@link AdlsTokenCredentialProvider}
+   * interface is required.
+   *
+   * <p>The implementation class must have a no-arg constructor and will be initialized by calling
+   * the {@link AdlsTokenCredentialProvider#initialize(Map)} method with the catalog properties.
+   *
+   * <p>Example: adls.token-credential-provider=com.example.MyCustomTokenCredentialProvider
+   *
+   * <p>When set, the {@link AdlsTokenCredentialProviders#from(Map)} method will use this provider
+   * to get ADLS credentials instead of using the default.
+   */
+  public static final String ADLS_TOKEN_CREDENTIAL_PROVIDER = "adls.token-credential-provider";
+
+  /**
+   * Used by the configured {@link #ADLS_TOKEN_CREDENTIAL_PROVIDER} value that will be used by
+   * {@link AdlsTokenCredentialProviders#defaultFactory()} and other token credential provider
+   * classes to pass provider-specific properties. Each property consists of a key name and an
+   * associated value.
+   */
+  public static final String ADLS_TOKEN_PROVIDER_PREFIX = "adls.token-credential-provider.";
 
   /**
    * When set, the {@link VendedAdlsCredentialProvider} will be used to fetch and refresh vended
@@ -68,7 +96,9 @@ public class AzureProperties implements Serializable {
   private String adlsRefreshCredentialsEndpoint;
   private boolean adlsRefreshCredentialsEnabled;
   private String token;
-  private Map<String, String> allProperties;
+  private Map<String, String> allProperties = Collections.emptyMap();
+  private String keyWrapAlgorithm;
+  private String keyVaultUrl;
 
   public AzureProperties() {}
 
@@ -102,6 +132,13 @@ public class AzureProperties implements Serializable {
         PropertyUtil.propertyAsBoolean(properties, ADLS_REFRESH_CREDENTIALS_ENABLED, true);
     this.token = properties.get(ADLS_TOKEN);
     this.allProperties = SerializableMap.copyOf(properties);
+    if (properties.containsKey(AZURE_KEYVAULT_URL)) {
+      this.keyVaultUrl = properties.get(AZURE_KEYVAULT_URL);
+    }
+
+    this.keyWrapAlgorithm =
+        properties.getOrDefault(
+            AzureProperties.AZURE_KEYVAULT_KEY_WRAP_ALGORITHM, DEFAULT_KEY_WRAP_ALGORITHM);
   }
 
   public Optional<Integer> adlsReadBlockSize() {
@@ -153,7 +190,9 @@ public class AzureProperties implements Serializable {
             };
         builder.credential(tokenCredential);
       } else {
-        builder.credential(new DefaultAzureCredentialBuilder().build());
+        AdlsTokenCredentialProvider credentialProvider =
+            AdlsTokenCredentialProviders.from(allProperties);
+        builder.credential(credentialProvider.credential());
       }
     }
 
@@ -164,5 +203,13 @@ public class AzureProperties implements Serializable {
     } else {
       builder.endpoint("https://" + account);
     }
+  }
+
+  public String keyWrapAlgorithm() {
+    return this.keyWrapAlgorithm;
+  }
+
+  public Optional<String> keyVaultUrl() {
+    return Optional.ofNullable(this.keyVaultUrl);
   }
 }
