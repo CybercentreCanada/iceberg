@@ -30,8 +30,8 @@ steps:
       testResultsFiles: "**/TEST-*.xml"
       tasks: "build -x test -x integrationTest"
       options: >
-        -DknownSparkVersions=3.5
-        -DdefaultSparkVersions=3.5
+        -DknownSparkVersions=4.1
+        -DdefaultSparkVersions=4.1
   - task: Gradle@3
     displayName: "Publish org.cccs.iceberg"
     condition: eq(variables.isPublish, true)
@@ -46,7 +46,7 @@ steps:
       testResultsFiles: "**/TEST-*.xml"
       tasks: "publish"
       options: >
-        -DknownSparkVersions=3.5
-        -DdefaultSparkVersions=3.5
+        -DknownSparkVersions=4.1
+        -DdefaultSparkVersions=4.1
         -PMAVEN_USER=$(MAVENUSER)
         -PMAVEN_PWD=$(MAVENPWD)
