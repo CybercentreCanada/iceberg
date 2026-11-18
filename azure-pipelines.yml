@@ -11,14 +11,39 @@ trigger:
 pool:
   vmImage: ubuntu-latest
 
+parameters:
+  - name: skipTests
+    type: boolean
+    default: false
+
 variables:
-  - group: MAVEN_PUBLISH_ARGS
   - name: isPublish
     value: true
 
 steps:
+  - task: Bash@3
+    displayName: "Check Maven feed authentication"
+    condition: eq(variables.isPublish, true)
+    env:
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+    inputs:
+      targetType: inline
+      script: |
+        set -euo pipefail
+        status="$(
+          curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+            "https://pkgs.dev.azure.com/cccs-stratus/_packaging/cccs-stratus/maven/v1/"
+        )"
+        if [[ "$status" != "200" ]]; then
+          echo "Maven feed access check failed with HTTP $status"
+          exit 1
+        fi
   - task: Gradle@3
     displayName: "Build org.cccs.iceberg"
+    condition: ne('${{ parameters.skipTests }}', true)
+    env:
+      SPARK_LOCAL_IP: localhost
     inputs:
       workingDirectory: ""
       gradleWrapperFile: "gradlew"
@@ -28,13 +53,40 @@ steps:
       jdkArchitectureOption: "x64"
       publishJUnitResults: true
       testResultsFiles: "**/TEST-*.xml"
+      tasks: "check -x javadoc -x integrationTest"
+      options: >
+        --console=plain
+        -Pquick=true
+        -DsparkVersions=4.1
+        -DflinkVersions=
+        -DkafkaVersions=
+        -DscalaVersion=2.13
+        -DtestParallelism=auto
+  - task: Gradle@3
+    displayName: "Build org.cccs.iceberg without tests"
+    condition: eq('${{ parameters.skipTests }}', true)
+    inputs:
+      workingDirectory: ""
+      gradleWrapperFile: "gradlew"
+      gradleOptions: "-Xmx3072m"
+      javaHomeOption: "JDKVersion"
+      jdkVersionOption: "1.17"
+      jdkArchitectureOption: "x64"
+      publishJUnitResults: false
+      testResultsFiles: "**/TEST-*.xml"
       tasks: "build -x test -x integrationTest"
       options: >
-        -DknownSparkVersions=3.5
-        -DdefaultSparkVersions=3.5
+        --console=plain
+        -DsparkVersions=4.1
+        -DflinkVersions=
+        -DkafkaVersions=
+        -DscalaVersion=2.13
   - task: Gradle@3
     displayName: "Publish org.cccs.iceberg"
     condition: eq(variables.isPublish, true)
+    env:
+      ORG_GRADLE_PROJECT_MAVEN_USER: AzureDevOps
+      ORG_GRADLE_PROJECT_MAVEN_PWD: $(System.AccessToken)
     inputs:
       workingDirectory: ""
       gradleWrapperFile: "gradlew"
@@ -46,7 +98,8 @@ steps:
       testResultsFiles: "**/TEST-*.xml"
       tasks: "publish"
       options: >
-        -DknownSparkVersions=3.5
-        -DdefaultSparkVersions=3.5
-        -PMAVEN_USER=$(MAVENUSER)
-        -PMAVEN_PWD=$(MAVENPWD)
+        --console=plain
+        -DsparkVersions=4.1
+        -DflinkVersions=
+        -DkafkaVersions=
+        -DscalaVersion=2.13
