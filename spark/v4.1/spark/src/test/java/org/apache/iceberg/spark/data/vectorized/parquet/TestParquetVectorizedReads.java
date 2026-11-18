@@ -28,6 +28,7 @@ import static org.assertj.core.api.Assumptions.assumeThat;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.math.BigDecimal;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.Path;
@@ -45,6 +46,7 @@ import org.apache.iceberg.data.RandomGenericData;
 import org.apache.iceberg.data.Record;
 import org.apache.iceberg.data.parquet.GenericParquetReaders;
 import org.apache.iceberg.data.parquet.GenericParquetWriter;
+import org.apache.iceberg.expressions.Literal;
 import org.apache.iceberg.io.CloseableIterable;
 import org.apache.iceberg.io.FileAppender;
 import org.apache.iceberg.parquet.Parquet;
@@ -65,6 +67,7 @@ import org.apache.iceberg.types.Type.PrimitiveType;
 import org.apache.iceberg.types.TypeUtil;
 import org.apache.iceberg.types.Types;
 import org.apache.parquet.column.ParquetProperties;
+import org.apache.parquet.hadoop.ParquetOutputFormat;
 import org.apache.parquet.schema.GroupType;
 import org.apache.parquet.schema.MessageType;
 import org.apache.parquet.schema.Type;
@@ -254,6 +257,27 @@ public class TestParquetVectorizedReads extends AvroDataTestBase {
         .build();
   }
 
+  FileAppender<Record> parquetWriterWithoutDictionary(Schema schema, File testFile)
+      throws IOException {
+    return Parquet.write(Files.localOutput(testFile))
+        .schema(schema)
+        .createWriterFunc(GenericParquetWriter::create)
+        .named("test")
+        .set(ParquetOutputFormat.ENABLE_DICTIONARY, "false")
+        .build();
+  }
+
+  FileAppender<Record> parquetV2WriterWithoutDictionary(Schema schema, File testFile)
+      throws IOException {
+    return Parquet.write(Files.localOutput(testFile))
+        .schema(schema)
+        .createWriterFunc(GenericParquetWriter::create)
+        .named("test")
+        .writerVersion(ParquetProperties.WriterVersion.PARQUET_2_0)
+        .set(ParquetOutputFormat.ENABLE_DICTIONARY, "false")
+        .build();
+  }
+
   void assertRecordsMatch(
       Schema schema,
       int expectedSize,
@@ -431,6 +455,37 @@ public class TestParquetVectorizedReads extends AvroDataTestBase {
   }
 
   @Test
+  public void testAllNullStringAndBinaryColumnsParquetV2() throws Exception {
+    // V2 string/binary uses DELTA_BYTE_ARRAY; an all-null page decodes to a delta length stream
+    // with totalValueCount == 0.
+    Schema schema =
+        new Schema(
+            required(100, "id", Types.LongType.get()),
+            optional(101, "string_data", Types.StringType.get()),
+            optional(102, "binary_data", Types.BinaryType.get()));
+
+    int stringOrdinal = 1;
+    int binaryOrdinal = 2;
+    File dataFile = temp.resolve("all-null-v2.parquet").toFile();
+    Iterable<Record> data =
+        generateData(
+            schema,
+            100,
+            0L,
+            RandomData.DEFAULT_NULL_PERCENTAGE,
+            record -> {
+              record.set(stringOrdinal, null);
+              record.set(binaryOrdinal, null);
+              return record;
+            });
+    try (FileAppender<Record> writer = parquetV2WriterWithoutDictionary(schema, dataFile)) {
+      writer.addAll(data);
+    }
+
+    assertRecordsMatch(schema, 100, data, dataFile, false, BATCH_SIZE);
+  }
+
+  @Test
   public void testUnsupportedReadsForParquetV2() throws Exception {
     // Some types use delta encoding and which are not supported for vectorized reads
     Schema schema = new Schema(SUPPORTED_PRIMITIVES.fields());
@@ -458,6 +513,39 @@ public class TestParquetVectorizedReads extends AvroDataTestBase {
       writer.addAll(data);
     }
     assertRecordsMatch(schema, numRows, data, dataFile, false, BATCH_SIZE);
+  }
+
+  @Test
+  public void testDecimalWithDefaultValueNotDictionaryEncoded() throws Exception {
+    Schema schema =
+        new Schema(
+            required(100, "id", Types.LongType.get()),
+            Types.NestedField.optional("int_backed")
+                .withId(101)
+                .ofType(Types.DecimalType.of(5, 2))
+                .withInitialDefault(Literal.of(new BigDecimal("0.00")))
+                .withWriteDefault(Literal.of(new BigDecimal("0.00")))
+                .build(),
+            Types.NestedField.optional("long_backed")
+                .withId(102)
+                .ofType(Types.DecimalType.of(15, 2))
+                .withInitialDefault(Literal.of(new BigDecimal("0.00")))
+                .withWriteDefault(Literal.of(new BigDecimal("0.00")))
+                .build(),
+            Types.NestedField.optional("fixed_backed")
+                .withId(103)
+                .ofType(Types.DecimalType.of(25, 2))
+                .withInitialDefault(Literal.of(new BigDecimal("0.00")))
+                .withWriteDefault(Literal.of(new BigDecimal("0.00")))
+                .build());
+
+    File dataFile = temp.resolve("decimal-no-dict.parquet").toFile();
+    Iterable<Record> data = generateData(schema, 1000, 0L, 0.0f, IDENTITY);
+    try (FileAppender<Record> writer = parquetWriterWithoutDictionary(schema, dataFile)) {
+      writer.addAll(data);
+    }
+
+    assertRecordsMatch(schema, 1000, data, dataFile, false, BATCH_SIZE);
   }
 
   private void assertIdenticalFileContents(
